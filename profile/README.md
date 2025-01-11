@@ -27,32 +27,12 @@ Forum Post (pt-BR): Pitch: A linguagem de programação Spiral
 
 - <https://www.tabnews.com.br/i574n/pitch-a-linguagem-de-programacao-spiral-chatgpt>
 
-## Recent translations to pt-BR
-
-<https://i574n.github.io/vault/data/community/netiquette_pt-br.md.html>  
-<https://i574n.github.io/vault/data/community/netiquette_pt-br.hangul.md.html>
-
-<https://i574n.github.io/vault/data/economy/만리마속도_pt-br.md.html>  
-<https://i574n.github.io/vault/data/economy/만리마속도_pt-br.hangul.md.html>
-
-<https://i574n.github.io/vault/data/magic/the-book-of-remembering_pt-br.md.html>  
-<https://i574n.github.io/vault/data/magic/the-book-of-remembering_pt-br.hangul.md.html>
-
-<https://i574n.github.io/vault/data/spirituality/gvk_pt-br.md.html>  
-<https://i574n.github.io/vault/data/spirituality/gvk_pt-br.hangul.md.html>
-
-<https://i574n.github.io/vault/data/spirituality/ressurection_pt-br.md.html>  
-<https://i574n.github.io/vault/data/spirituality/ressurection_pt-br.hangul.md.html>
-
-<https://i574n.github.io/vault/data/spirituality/the-book-of-innocence_pt-br.md.html>  
-<https://i574n.github.io/vault/data/spirituality/the-book-of-innocence_pt-br.hangul.md.html>
-
 ## Connect
 
-<div><a href="#"><img alt="Email" height="24px" width="24px" align="top" src="https://github.com/gui-bus/TechIcons/blob/main/Dark/Gmail.svg" /></a> i574n@pm.me</div>
 <div><a href="#"><img alt="Discord" height="24px" width="24px" align="top" src="https://github.com/gui-bus/TechIcons/blob/main/Dark/Discord.svg" /></a> https://discord.gg/D4kHBeAG8h</div>
-<div><a href="#"><img alt="Linkedin" height="24px" width="24px" align="top" src="https://github.com/gui-bus/TechIcons/blob/main/Dark/Linkedin.svg" /></a> <a href="https://linkedin.com/company/i574n" target="_blank">i574n</a></div>
 <div><a href="#"><img alt="X" height="24px" width="24px" align="top" src="https://github.com/gui-bus/TechIcons/blob/main/Dark/Twitter.svg" /></a> <a href="https://twitter.com/i574n" target="_blank">i574n</a></div>
+<div><a href="#"><img alt="Email" height="24px" width="24px" align="top" src="https://github.com/gui-bus/TechIcons/blob/main/Dark/Gmail.svg" /></a> i574n@pm.me</div>
+<div><a href="#"><img alt="Linkedin" height="24px" width="24px" align="top" src="https://github.com/gui-bus/TechIcons/blob/main/Dark/Linkedin.svg" /></a> <a href="https://linkedin.com/company/i574n" target="_blank">i574n</a></div>
 
 <br />
 
@@ -60,3 +40,8 @@ BTC address: bc1qml7erhygenxxyf3lnaxzle0c85m7fanf3hq60p
 ETC address: 0x4f68400eB7F291A5ac0554A3947Ccf39A88Bcde7  
 NEAR address: 93dec09ba1ed4910665a88bd667b84c4039b6883c137a28ef8b92547a173f651  
 ETH/BNB/USDT address: 0x33bb7967cF60Ae8119447dBA8011d684473FA76b  
+
+## TODO
+
+- [ ] Rewrite Hangulize using Rust/Spiral and start Arabic project (<https://github.com/i574n/hangulize>)
+- [ ] Tic-tac-toe sample - Spiral contract (<https://github.com/i574n/tictactoe>)
