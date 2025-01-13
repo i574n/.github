@@ -2,7 +2,7 @@
 
 Implementation of Haskell code samples from the "Learn Physics with Functional Programming" book using the Spiral programming language
 
-- <https://i574n.github.io/polyglot/lib/spiral/physics.dib.html>
+- <https://i574n.github.io/spiral/lib/spiral/physics.dib.html>
 
 On-chain dice rolling smart contract using the NEAR Protocol (Rust WebAssembly)
 
