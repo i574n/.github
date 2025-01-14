@@ -29,10 +29,10 @@ Forum Post (pt-BR): Pitch: A linguagem de programação Spiral
 
 ## Connect
 
-<div><a href="#"><img alt="Discord" height="24px" width="24px" align="top" src="https://github.com/gui-bus/TechIcons/blob/main/Dark/Discord.svg" /></a> <https://discord.gg/D4kHBeAG8h> </div>
+<div><a href="#"><img alt="Discord" height="24px" width="24px" align="top" src="https://github.com/gui-bus/TechIcons/blob/main/Dark/Discord.svg" /></a> <a href="https://discord.gg/D4kHBeAG8h" target="_blank">https://discord.gg/D4kHBeAG8h</a></div>
 <div><a href="#"><img alt="X" height="24px" width="24px" align="top" src="https://github.com/gui-bus/TechIcons/blob/main/Dark/Twitter.svg" /></a> <a href="https://twitter.com/i574n" target="_blank">i574n</a></div>
 <div><a href="#"><img alt="Email" height="24px" width="24px" align="top" src="https://github.com/gui-bus/TechIcons/blob/main/Dark/Gmail.svg" /></a> i574n@pm.me</div>
-<div><a href="#"><img alt="Linkedin" height="24px" width="24px" align="top" src="https://github.com/gui-bus/TechIcons/blob/main/Dark/Linkedin.svg" /></a> <a href="https://linkedin.com/company/i574n" target="_blank">i574n</a></div>
+<div><a href="#"><img alt="Linkedin" height="24px" width="24px" align="top" src="https://github.com/gui-bus/TechIcons/blob/main/Dark/Linkedin.svg" /></a> <a href="https://linkedin.com/company/i574n" target="_blank">https://linkedin.com/company/i574n</a></div>
 
 <br />
 
