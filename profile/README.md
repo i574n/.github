@@ -6,25 +6,25 @@ This spirit of deeper discovery links Einstein’s genius with the world of comp
 
 ## Recent programming works
 
-<https://i574n.github.io/spiral/lib/spiral/physics.dib.html>
+<https://i574n.github.io/spiral/lib/spiral/physics.dib.html>  
 Implementation of Haskell code samples from the "Learn Physics with Functional Programming" book using the Spiral programming language
 
-<https://i574n.github.io/dice/ui/dist>
-<https://github.com/i574n/dice/blob/main/ui/src/dice_ui.spi>
-<https://github.com/i574n/dice/blob/main/contract/src/lib.rs>
-<https://i574n.github.io/dice/lib/dice.dib.html>
+<https://i574n.github.io/dice/ui/dist>  
+<https://github.com/i574n/dice/blob/main/ui/src/dice_ui.spi>  
+<https://github.com/i574n/dice/blob/main/contract/src/lib.rs>  
+<https://i574n.github.io/dice/lib/dice.dib.html>  
 On-chain dice rolling smart contract using the NEAR Protocol (Rust WebAssembly)
 
-<https://i574n.github.io/polyglot/lib/math/math.dib.html>
+<https://i574n.github.io/polyglot/lib/math/math.dib.html>  
 Computational Mathematics: Unit Testing With Spiral, Rust and Python
 
-<https://chat.openai.com/share/62ae3405-4d5f-4cff-a7d9-10ed67cc7cf2>
+<https://chat.openai.com/share/62ae3405-4d5f-4cff-a7d9-10ed67cc7cf2>  
 Spiral ChatGPT Pitch Conversation (en-US)
 
-<https://chat.openai.com/share/1ad5a1de-ca7a-4d26-8594-f1901c56281c>
+<https://chat.openai.com/share/1ad5a1de-ca7a-4d26-8594-f1901c56281c>  
 Spiral ChatGPT Pitch Conversation (pt-BR)
 
-<https://www.tabnews.com.br/i574n/pitch-a-linguagem-de-programacao-spiral-chatgpt>
+<https://www.tabnews.com.br/i574n/pitch-a-linguagem-de-programacao-spiral-chatgpt>  
 Forum Post (pt-BR): Pitch: A linguagem de programação Spiral
 
 ## Connect
