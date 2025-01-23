@@ -1,0 +1,49 @@
+{
+	"folders": [
+		{
+			"name": "dice",
+			"path": "../dice"
+		},
+		{
+			"name": "spiral",
+			"path": "../spiral"
+		},
+		{
+			"name": "vault",
+			"path": "../vault"
+		},
+		{
+			"name": "polyglot",
+			"path": "../polyglot"
+		},
+		{
+			"name": "alphabet",
+			"path": "../alphabet"
+		},
+		{
+			"name": ".github",
+			"path": "."
+		}
+	],
+	"settings": {
+		"FSharp.inlayHints.typeAnnotations": false,
+		"rust-analyzer.linkedProjects": [
+			"../spiral/workspace/Cargo.toml",
+			"../polyglot/workspace/Cargo.toml"
+		],
+		"rust-analyzer.procMacro.ignored": {
+			"leptos_macro": [
+				"component",
+				"server"
+			]
+		},
+		"emmet.includeLanguages": {
+			"rust": "html",
+			"*.rs": "html"
+		},
+		"files.associations": {
+			"*.rs": "rust"
+		},
+		"dotnet.defaultSolution": "disable"
+	}
+}
