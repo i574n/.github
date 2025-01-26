@@ -1,0 +1,24 @@
+{
+	"folders": [
+		{
+			"name": "The-Spiral-Language",
+			"path": "../polyglot/deps/The-Spiral-Language"
+		},
+		{
+			"name": "Fable",
+			"path": "../polyglot/deps/Fable"
+		},
+		{
+			"name": "dotnet-interactive",
+			"path": "../polyglot/deps/dotnet-interactive"
+		},
+		{
+			"name": "dotnet-repl",
+			"path": "../polyglot/deps/dotnet-repl"
+		}
+	],
+	"settings": {
+		"FSharp.inlayHints.typeAnnotations": false,
+		"dotnet.defaultSolution": "disable"
+	}
+}
