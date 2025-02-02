@@ -4,7 +4,13 @@ i574n is a puzzle wrapped in layers of logic and wonder. It nods to Einstein yet
 
 This spirit of deeper discovery links Einstein’s genius with the world of computer programming — both are classified as INTP on Personality Database. This shared label hints at a common thread: the curious mind that reshapes physics also writes inventive code, weaving intellect and creativity together. Whether probing space-time or debugging software, the goal is the same: to dive into the mystery and emerge with fresh possibilities.
 
-## Recent programming works
+**Why Spiral and Notebooks?**
+
+Ordered code is like a well-drilled squad: every type and function steps up in line before it’s needed, making your program crystal clear for both humans and AI. This brutal discipline meshes perfectly with the ethos of literate programming found in modern notebooks, where every cell builds on the previous one to tell a seamless, step-by-step story.
+
+In contrast, languages like Rust, Go, Elixir, Gleam, and TypeScript let you toss your definitions around like loose cannonballs on a chaotic battlefield. That mess might work for some, but it leaves newcomers wading through a jumbled maze to figure out what’s what. When clarity is the weapon of choice, only the ruthless order of define-before-use will cut through the confusion and reign supreme.
+
+## Recent works
 
 <https://i574n.github.io/spiral/lib/spiral/physics.dib.html>  
 Implementation of Haskell code samples from the "Learn Physics with Functional Programming" book using the Spiral programming language
@@ -30,7 +36,6 @@ Forum Post (pt-BR): Pitch: A linguagem de programação Spiral
 ## Connect
 
 <div><a href="#"><img alt="Discord" height="24px" width="24px" align="top" src="https://github.com/gui-bus/TechIcons/blob/main/Dark/Discord.svg" /></a> <a href="https://discord.gg/D4kHBeAG8h" target="_blank">https://discord.gg/D4kHBeAG8h</a></div>
-<div><a href="#"><img alt="X" height="24px" width="24px" align="top" src="https://github.com/gui-bus/TechIcons/blob/main/Dark/Twitter.svg" /></a> <a href="https://twitter.com/i574n" target="_blank">i574n</a></div>
 <div><a href="#"><img alt="Email" height="24px" width="24px" align="top" src="https://github.com/gui-bus/TechIcons/blob/main/Dark/Gmail.svg" /></a> i574n@pm.me</div>
 <div><a href="#"><img alt="Linkedin" height="24px" width="24px" align="top" src="https://github.com/gui-bus/TechIcons/blob/main/Dark/Linkedin.svg" /></a> <a href="https://linkedin.com/company/i574n" target="_blank">https://linkedin.com/company/i574n</a></div>
 
