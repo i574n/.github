@@ -1,0 +1,20 @@
+#!meta
+
+{"kernelInfo":{"defaultKernelName":"pwsh","items":[]}}
+
+#!pwsh
+
+. ../../polyglot/scripts/nbs_header.ps1
+. ../../polyglot/scripts/core.ps1
+
+#!pwsh
+
+{ pwsh build.ps1 } | Invoke-Block
+
+#!pwsh
+
+{ pwsh outdated.ps1 } | Invoke-Block
+
+#!pwsh
+
+{ pwsh publish.ps1 } | Invoke-Block
