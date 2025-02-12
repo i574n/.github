@@ -12,4 +12,4 @@ if (!$fast) {
 
 . ../../polyglot/scripts/core.ps1
 
-{ . ../../spiral/workspace/target/release/spiral$(_exe) dib --path $ScriptDir/ci.dib } | Invoke-Block -Location ../../polyglot/scripts
+{ . ../../spiral/workspace/target/release/spiral$(_exe) dib --path $ScriptDir/workflow.dib } | Invoke-Block -Location ../../polyglot/scripts
