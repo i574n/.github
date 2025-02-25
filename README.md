@@ -1,4 +1,4 @@
-# .github
+# i574n.github
 
 <https://i574n.github.io/.github>
 
@@ -18,5 +18,6 @@ Navigate to the directory, initialize dependencies and build the project:
 
 ```powershell
 cd i574n.github
+winget install git.git pwsh python Microsoft.DotNet.SDK.Preview Microsoft.DotNet.SDK.9
 pwsh scripts/workflow.ps1
 ```
