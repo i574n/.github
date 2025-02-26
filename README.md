@@ -34,7 +34,7 @@ Documentation
 </td>
 <td>
 
-- Repository File Tree (HTML)  
+- Repository file tree (HTML)  
 <https://i574n.github.io/.github>
 
 </td>
@@ -48,7 +48,7 @@ Build
 </td>
 <td>
 
-- Full Workflow Output (PowerShell)  
+- Full workflow output (PowerShell)  
 <https://i574n.github.io/.github/scripts/workflow.dib.html>
 
 </td>
