@@ -18,6 +18,48 @@ Navigate to the directory, initialize dependencies and build the project:
 
 ```powershell
 cd i574n.github
-winget install git.git pwsh python Microsoft.DotNet.SDK.Preview Microsoft.DotNet.SDK.9
+# winget install git.git pwsh python Microsoft.DotNet.SDK.Preview Microsoft.DotNet.SDK.9
 pwsh scripts/workflow.ps1
 ```
+
+## Links
+
+<table>
+
+<tr>
+<td>
+
+Documentation
+
+</td>
+<td>
+
+- Repository File Tree (HTML)  
+<https://i574n.github.io/.github>
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+Build
+
+</td>
+<td>
+
+- Full Workflow Output (PowerShell)  
+<https://i574n.github.io/.github/scripts/workflow.dib.html>
+
+</td>
+</tr>
+
+</table>
+
+## Contributing
+
+Contributions are welcome! Please see the [CONTRIBUTING.md](https://github.com/i574n/.github/blob/main/CONTRIBUTING.md) for guidelines.
+
+---
+
+[![Star History Chart](https://api.star-history.com/svg?repos=i574n/.github&type=Timeline)]
