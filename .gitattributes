@@ -1,0 +1,4 @@
+* text=auto eol=lf
+
+*.dib.ipynb linguist-generated
+*.dib.html linguist-generated
