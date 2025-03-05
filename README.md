@@ -59,7 +59,3 @@ Build
 ## Contributing
 
 Contributions are welcome! Please see the [CONTRIBUTING.md](https://github.com/i574n/.github/blob/main/CONTRIBUTING.md) for guidelines.
-
----
-
-[![Star History Chart](https://api.star-history.com/svg?repos=i574n/.github&type=Timeline)]
