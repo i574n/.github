@@ -1,6 +1,10 @@
 {
 	"folders": [
 		{
+			"name": "i574n.github",
+			"path": "."
+		},
+		{
 			"name": "dice",
 			"path": "../dice"
 		},
@@ -19,10 +23,6 @@
 		{
 			"name": "alphabet",
 			"path": "../alphabet"
-		},
-		{
-			"name": "i574n.github",
-			"path": "."
 		}
 	],
 	"settings": {
