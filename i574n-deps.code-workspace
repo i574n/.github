@@ -15,6 +15,9 @@
 		{
 			"name": "dotnet-repl",
 			"path": "../polyglot/deps/dotnet-repl"
+		},
+		{
+			"path": "../polyglot/deps/Paket"
 		}
 	],
 	"settings": {
