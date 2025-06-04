@@ -11,4 +11,6 @@ $ErrorActionPreference = "Stop"
 
 { pwsh ../../polyglot/scripts/outdated.ps1 } | Invoke-Block
 
+{ pwsh ../../tapas2/scripts/outdated.ps1 } | Invoke-Block
+
 { pwsh ../../dice/scripts/outdated.ps1 } | Invoke-Block
