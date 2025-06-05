@@ -5,10 +5,6 @@
 			"path": "."
 		},
 		{
-			"name": "tapas2",
-			"path": "../tapas2"
-		},
-		{
 			"name": "dice",
 			"path": "../dice"
 		},

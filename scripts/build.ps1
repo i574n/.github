@@ -32,13 +32,6 @@ if ($env:CI) {
     Remove-Item ../../polyglot/target/spiral/spiral/target/release/build -Recurse -Force -ErrorAction Ignore
 }
 
-{ pwsh ../../tapas2/scripts/build.ps1 } | Invoke-Block -OnError Continue
-
-if ($env:CI) {
-    Remove-Item ../../tapas2/target/release/deps -Recurse -Force -ErrorAction Ignore
-    Remove-Item ../../tapas2/target/release/build -Recurse -Force -ErrorAction Ignore
-}
-
 { pwsh ../../dice/scripts/build.ps1 } | Invoke-Block -OnError Continue
 
 if ($env:CI) {
