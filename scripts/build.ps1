@@ -38,3 +38,10 @@ if ($env:CI) {
     Remove-Item ../../dice/target/release/deps -Recurse -Force -ErrorAction Ignore
     Remove-Item ../../dice/target/release/build -Recurse -Force -ErrorAction Ignore
 }
+
+{ pwsh ../deps/alphabet/apps/documents/build.ps1 } | Invoke-Block
+
+if ($env:CI) {
+    Remove-Item ../../alphabet/target/release/deps -Recurse -Force -ErrorAction Ignore
+    Remove-Item ../../alphabet/target/release/build -Recurse -Force -ErrorAction Ignore
+}

@@ -13,10 +13,6 @@
 			"path": "../spiral"
 		},
 		{
-			"name": "vault",
-			"path": "../vault"
-		},
-		{
 			"name": "polyglot",
 			"path": "../polyglot"
 		},

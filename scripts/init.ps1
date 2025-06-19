@@ -26,9 +26,9 @@ Set-Location $ScriptDir
 { pwsh ../../dice/scripts/init.ps1 } | Invoke-Block
 
 Set-Location (New-Item -ItemType Directory -Path "../.." -Force)
-git clone --recurse-submodules https://github.com/i574n/vault.git # --branch gh-pages
-Set-Location vault
+git clone --recurse-submodules https://github.com/i574n/alphabet.git # --branch gh-pages
+Set-Location alphabet
 git pull
 Set-Location $ScriptDir
 
-{ pwsh ../../vault/scripts/init.ps1 } | Invoke-Block
+{ pwsh ../../alphabet/scripts/init.ps1 } | Invoke-Block

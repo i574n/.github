@@ -78,5 +78,3 @@ Get-ChildItem -Path ../dist -Recurse -Force | Where-Object { $_.Name.StartsWith(
 }
 
 { . ../../polyglot/apps/dir-tree-html/dist/DirTreeHtml$(_exe) --dir ../dist --html ../dist/index.html } | Invoke-Block
-
-{ pwsh ../../vault/scripts/publish.ps1 } | Invoke-Block
