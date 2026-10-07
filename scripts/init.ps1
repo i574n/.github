@@ -19,6 +19,10 @@ Set-Location $ScriptDir
 
 pwsh ../../spiral/scripts/init.ps1
 
+# polyglot is cloned here too, not only as a side effect of spiral's init (which stopped early once and left no polyglot).
+Set-Location (New-Item -ItemType Directory -Path "../.." -Force)
+if (!(Test-Path polyglot/.git)) { git clone --recurse-submodules https://$domain/$owner/polyglot.git }
+Set-Location $ScriptDir
 
 . ../../polyglot/scripts/core.ps1
 
