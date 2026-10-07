@@ -1,0 +1,24 @@
+<!-- livebook:{"spiral_code":"pwsh"} -->
+
+```pwsh
+. ../../polyglot/scripts/nbs_header.ps1
+. ../../polyglot/scripts/core.ps1
+```
+
+<!-- livebook:{"spiral_code":"pwsh"} -->
+
+```pwsh
+{ pwsh build.ps1 } | Invoke-Block
+```
+
+<!-- livebook:{"spiral_code":"pwsh"} -->
+
+```pwsh
+{ pwsh outdated.ps1 } | Invoke-Block
+```
+
+<!-- livebook:{"spiral_code":"pwsh"} -->
+
+```pwsh
+{ pwsh publish.ps1 } | Invoke-Block
+```

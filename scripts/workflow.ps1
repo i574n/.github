@@ -12,4 +12,5 @@ if (!$fast) {
 
 . ../../polyglot/scripts/core.ps1
 
-{ . ../../spiral/workspace/target/release/spiral$(_exe) dib --path $ScriptDir/workflow.dib } | Invoke-Block -Location ../../polyglot/scripts
+# workflow.livemd's cells are all pwsh: one pwsh session (polyglot core.ps1 Invoke-PwshNotebook), no notebook kernel.
+Invoke-PwshNotebook $ScriptDir/workflow.livemd
