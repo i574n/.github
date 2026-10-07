@@ -12,16 +12,16 @@ In contrast, languages like Rust, Go, Elixir, Gleam, and TypeScript let you toss
 
 ## Recent works
 
-<https://i574n.github.io/spiral/lib/spiral/physics.dib.html>  
+<https://i574n.github.io/spiral/lib/spiral/physics.livemd.html>  
 Implementation of Haskell code samples from the "Learn Physics with Functional Programming" book using the Spiral programming language
 
 <https://i574n.github.io/dice/ui/dist>  
 <https://github.com/i574n/dice/blob/main/ui/src/dice_ui.spi>  
 <https://github.com/i574n/dice/blob/main/contract/dice_contract.spi>  
-<https://i574n.github.io/dice/lib/dice.dib.html>  
+<https://i574n.github.io/dice/lib/dice.livemd.html>  
 On-chain dice rolling smart contract using the NEAR Protocol (Rust WebAssembly)
 
-<https://i574n.github.io/polyglot/lib/math/math.dib.html>  
+<https://i574n.github.io/polyglot/lib/math/math.livemd.html>  
 Computational Mathematics: Unit testing With Spiral, Rust and Python
 
 <https://chat.openai.com/share/62ae3405-4d5f-4cff-a7d9-10ed67cc7cf2>  

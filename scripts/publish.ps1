@@ -12,15 +12,12 @@ rsync -av `
     --exclude '.elixir_ls' `
     --exclude '.git' `
     --exclude '.history' `
-    --exclude '.paket' `
     --exclude '.vscode' `
     --exclude 'bin' `
     --exclude 'build' `
     --exclude 'deps' `
-    --exclude 'fable_modules' `
     --exclude 'node_modules' `
     --exclude 'obj' `
-    --exclude 'paket-files' `
     --exclude 'pkg' `
     --exclude 'target' `
 `

@@ -21,7 +21,7 @@ jobs:
           components: "clippy,rust-src,rustfmt"
           targets: "wasm32-unknown-unknown"
 
-      # Elixir and Gleam: the notebooks run through spiral/apps/kino (`mix spiral.dib`, via its spi/livebook_dib.ps1,
+      # Elixir and Gleam: the notebooks run through spiral/apps/kino (`mix spiral.notebook`, via its spi/run_notebook.ps1,
       # which also installs .NET 11 and builds the Spiral compiler into ~/.cache/spiral-bin when missing). Gleam >= 1.14:
       # kino's manifest.toml pins gleam_stdlib 1.0.5. jupyter (html outputs) comes from polyglot's requirements.txt.
       - uses: erlef/setup-beam@v1

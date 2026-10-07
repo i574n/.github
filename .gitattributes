@@ -1,4 +1,4 @@
 * text=auto eol=lf
 
-*.dib.ipynb linguist-generated
-*.dib.html linguist-generated
+*.livemd.ipynb linguist-generated
+*.livemd.html linguist-generated
