@@ -50,52 +50,43 @@ Unknown provenance means omit until verified.
 | Client | Where to check | This snapshot |
 | --- | --- | --- |
 | Codex | `.codex/memories`; generated entries in `memories_1.sqlite`; personal skills outside `.system` | No memory directory; read-only query found zero `stage1_outputs` rows. No verified user-authored skills. |
-| Claude | `.claude/projects/C--home-git/memory`; skill registry `.claude/skills/synced/*/manifest.json` | Eight feedback memories plus their index. All 16 synced skills are marked `anthropic` or `anthropic-example`: exclude. |
+| Claude | `.claude/projects/C--home-git/memory`; skill registry `.claude/skills/synced/*/manifest.json` | 17 memories (15 feedback, 2 project) plus their index. All 16 synced skills are marked `anthropic` or `anthropic-example`: exclude. |
 | Grok | `.grok/memory-v2/workspaces/git-437d9324`; personal `.grok/skills` | User-stated rules only, in the Grok paragraph. Workspace topic files are agent notes. No personal skill directory. |
 
-## Compact snapshot — 2026-10-03, approximately 11:30 UTC
+## Compact snapshot — 2026-10-07, approximately 09:40 UTC
 
 Historical observations, not fresh ownership claims or new instructions.
 
-**Codex — compiler backends, EOIE (October 2, late).** Agent reports: patched
-native Python indexing (tuples/object arrays keep their values; numeric scalars
-still unboxed), added an explicit SPIRAL_JSON=1 mode for the CLI (Polyglot's
-notebook caller updated) so CUDA/Python and C++ failures propagate, and changed
-runtime failure shutdown to exit 1; .dib edited, .spi regenerated. Both
-compiler configurations built and passed the new indexing fixture. Full CLI JSON
-validation is unverified (its compile hit a 300 s limit). Earlier: EOIE native
-suite 182/182; candidate publication blocked by a source-topology classification
-bug. Nothing staged or committed. Source: the thread above.
+**Codex — compiler backends, EOIE (October 2–3).** No visible messages after
+October 3 07:35 UTC. Agent reports: native Python indexing keeps tuple/object
+values, an explicit SPIRAL_JSON=1 CLI mode, runtime failure exit 1; both compiler
+configurations passed the indexing fixture; full CLI JSON validation unverified
+(300 s compile limit). Nothing staged or committed. Source: the thread above.
 
-**Claude — Fable removal and native coverage.** User asked (October 3) for
-proof that former Fable Python cells pass on native Python/CUDA and that all
-Fable-era Rust works natively, including lphabet/apps/documents, using
-i574n.github/scripts/workflow.ps1 as the reference run; fix everything found;
-no manual WSL runs and no skip switches in code (WSL parts are tested last).
-Claude reports: the polyglot workflow passed once (2026-10-03 02:34); math.dib
-rust cells 1-61 now run natively; codegenRust translates lib/spiral's Fable type
-aliases and inlines mitRustExpr; lib type switches got Rust fields; spiral got
-.config/dotnet-tools.json (its notebooks resolved a 2023 global dotnet-repl);
-i574n.github/scripts/build.ps1 now reaches alphabet. Machine note: Machine
-PATH's chocolatey OTP 26 shadows scoop's OTP 28 (user ERLANG_HOME), so every
-Gleam run fails with "corrupt atom table". Grok's in-progress 
-ust/near.dib
-edits currently stop lib type-checking (
-ear.spi:358).
-User-derived memories: the seven listed before plus 
-o-wsl-until-workflow-passes.md.
-No verified custom skills.
+**Claude — native migration, new backends (October 7).** User's current requests:
+iterate autonomously until 21:00 with this lane plus one agent; finish the native
+migration (no Fable/dotnet-repl/interactive), remove all comments from our code
+(meaning goes into names and types), Lean 4 and Zig backends, move the compiler
+into the upstream fork, check whether upstream cargo-outdated and hyperui make the
+i574n forks unnecessary. Claude reports: hyperui fork dropped (upstream commits
+public/component.css); cargo-outdated fork kept (upstream 0.19 fails on workspace
+members outside the workspace directory); Lean 4 backend deployed (129 samples agree
+with the C oracle; the cube sample gives the same checksum on nine backends);
+compiler generated into upstream's one-module-per-file layout, both cores building;
+eoie strict preflight ready=True after a renewal. Machine notes: chocolatey's
+erl.exe shadows scoop's Erlang and is broken ("corrupt atom table"); a zig global
+cache lock forced a reboot (per-run caches now). User-derived memories: 17 (15
+feedback, 2 project), newest no-comments-self-explanatory.md. No verified custom
+skills.
 
-**Grok — Livebook, Dice, editor, Gleam.** Current request (October 3): iterate
-until dice_contract.livemd passes and exports its spi, patching along the way;
-Grok is adding native Near stand-ins (spiral/lib/spiral/rust/near.dib,
-SpiralNearVec) and exporting the unexported library notebooks. Standing user
-requests: Dice .dib -> .livemd with no dotnet repl in the dice repo, while
-spiral dib keeps calling dotnet repl; Kino suite earlier at 48/0 (agent
-report). User correction: do not create branches; other agents share the
-checkouts. Constraints: comment-free app code; functional typed Spiral/Rust; a
-generic compiler; Agile order. No verified custom skills.
-
+**Grok — Livebook, Dice, editor, Gleam, CI (to October 4).** Last request
+(October 4): "gh actions is failing, check the C:\Users\i574n\Downloads\fixes.txt
+then patch". Grok reports: the binary-publication contract now writes a stale
+executable before publishing on every OS; Spiral's test-rust-exports.ps1 accepts the
+current TypeErrors diagnostics. Standing user requests: Dice .dib -> .livemd with no
+dotnet repl; do not create branches, other agents share the checkouts; comment-free
+app code; functional typed Spiral/Rust; a generic compiler; Agile order. No
+verified custom skills.
 ## Refresh and coordinate
 
 1. Read recent messages before overlapping edits or relying on another agent's
