@@ -20,6 +20,12 @@ Set-Location $ScriptDir
 pwsh ../../spiral/scripts/init.ps1
 
 Set-Location (New-Item -ItemType Directory -Path "../.." -Force)
+if (!(Test-Path dir-tree-html/.git)) { git clone https://$domain/$owner/dir-tree-html.git }
+Set-Location $ScriptDir
+
+pwsh ../../dir-tree-html/scripts/init.ps1 -fast 1
+
+Set-Location (New-Item -ItemType Directory -Path "../.." -Force)
 if (!(Test-Path polyglot/.git)) { git clone --recurse-submodules https://$domain/$owner/polyglot.git }
 Set-Location $ScriptDir
 

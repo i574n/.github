@@ -10,6 +10,8 @@ $ErrorActionPreference = "Stop"
 
 { pwsh ../../spiral/scripts/build.ps1 } | Invoke-Block
 
+{ pwsh ../../dir-tree-html/build.ps1 } | Invoke-Block
+
 { pwsh ../../polyglot/scripts/build.ps1 } | Invoke-Block
 
 { pwsh ../../dice/scripts/build.ps1 } | Invoke-Block -OnError Continue
