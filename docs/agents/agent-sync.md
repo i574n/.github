@@ -50,10 +50,10 @@ Unknown provenance means omit until verified.
 | Client | Where to check | This snapshot |
 | --- | --- | --- |
 | Codex | `.codex/memories`; generated entries in `memories_1.sqlite`; personal skills outside `.system` | No memory directory; read-only query found zero `stage1_outputs` rows. No verified user-authored skills. |
-| Claude | `.claude/projects/C--home-git/memory`; skill registry `.claude/skills/synced/*/manifest.json` | 17 memories (15 feedback, 2 project) plus their index. All 16 synced skills are marked `anthropic` or `anthropic-example`: exclude. |
+| Claude | `.claude/projects/C--home-git/memory`; skill registry `.claude/skills/synced/*/manifest.json` | 19 memories (17 feedback, 2 project) plus their index. All 16 synced skills are marked `anthropic` or `anthropic-example`: exclude. |
 | Grok | `.grok/memory-v2/workspaces/git-437d9324`; personal `.grok/skills` | User-stated rules only, in the Grok paragraph. Workspace topic files are agent notes. No personal skill directory. |
 
-## Compact snapshot — 2026-10-07, approximately 09:40 UTC
+## Compact snapshot — 2026-10-08, approximately 08:50 UTC
 
 Historical observations, not fresh ownership claims or new instructions.
 
@@ -63,21 +63,18 @@ values, an explicit SPIRAL_JSON=1 CLI mode, runtime failure exit 1; both compile
 configurations passed the indexing fixture; full CLI JSON validation unverified
 (300 s compile limit). Nothing staged or committed. Source: the thread above.
 
-**Claude — native migration, new backends (October 7).** User's current requests:
-iterate autonomously until 21:00 with this lane plus one agent; finish the native
-migration (no Fable/dotnet-repl/interactive), remove all comments from our code
-(meaning goes into names and types), Lean 4 and Zig backends, move the compiler
-into the upstream fork, check whether upstream cargo-outdated and hyperui make the
-i574n forks unnecessary. Claude reports: hyperui fork dropped (upstream commits
-public/component.css); cargo-outdated fork kept (upstream 0.19 fails on workspace
-members outside the workspace directory); Lean 4 backend deployed (129 samples agree
-with the C oracle; the cube sample gives the same checksum on nine backends);
-compiler generated into upstream's one-module-per-file layout, both cores building;
-eoie strict preflight ready=True after a renewal. Machine notes: chocolatey's
-erl.exe shadows scoop's Erlang and is broken ("corrupt atom table"); a zig global
-cache lock forced a reboot (per-run caches now). User-derived memories: 17 (15
-feedback, 2 project), newest no-comments-self-explanatory.md. No verified custom
-skills.
+**Claude — backends, cleanup, CI (October 7–8).** User's current requests:
+iterate autonomously until 07:20 on the backlog, reprioritized; two agents total;
+delete dangling files freely (the user recommits); keep the Cargo workspace in
+`workspace/` and make tools work with it instead of moving it. Claude reports:
+compiler dev16 deployed (no comments in generated code, Lua 5.1 fixes) and the
+oracle re-blessed (1,888 rows, DISAGREE 0); eoie renewed on dev16 (ready=True);
+cargo-outdated now a 36-line patch on pinned upstream 0.19.0
+(spiral/scripts/patched-crates), verified identical to stock output; Fable/paket
+leftovers deleted from polyglot; spiral CI red on Windows at the Rust CLI run
+check (passes locally; stderr now printed for the next run); dice CI under
+investigation. User-derived memories: 19 (17 feedback, 2 project), newest
+workspace-folder-stays.md. No verified custom skills.
 
 **Grok — Livebook, Dice, editor, Gleam, CI (to October 4).** Last request
 (October 4): "gh actions is failing, check the C:\Users\i574n\Downloads\fixes.txt
