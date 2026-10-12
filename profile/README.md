@@ -12,7 +12,7 @@ In contrast, languages like Rust, Go, Elixir, Gleam, and TypeScript let you toss
 
 ## Recent works
 
-<https://i574n.github.io/spiral/lib/spiral/physics.livemd.html>  
+<https://i574n.github.io/spiral/lib/spiral/physics.spi.html>  
 Implementation of Haskell code samples from the "Learn Physics with Functional Programming" book using the Spiral programming language
 
 <https://i574n.github.io/dice/ui/dist>  
