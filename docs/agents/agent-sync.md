@@ -62,7 +62,7 @@ templates, archives, trash and technical observations without user provenance.
 | Client | Where to check | This snapshot |
 | --- | --- | --- |
 | Codex | `.codex/memories`; `memories_1.sqlite`; personal skills outside `.system` | No memories, no user-authored skills. |
-| Claude | `.claude/projects/C--home-git/memory`; `.claude/skills/synced/*/manifest.json` | 35 memories (27 feedback, 5 project, 3 reference). Synced skills are vendor: exclude. |
+| Claude | `.claude/projects/C--home-git/memory`; `.claude/skills/synced/*/manifest.json` | 40 memories (32 feedback, 5 project, 3 reference). Synced skills are vendor: exclude. |
 | Grok | `.grok/memory-v2/workspaces/git-437d9324`; `.grok/skills` | User-stated rules only, below. No personal skills. |
 | OpenCode | `.config/opencode`; project `AGENTS.md`, `.opencode/` | Preferences only (`cli.json`, `service.json`). No memories, agents or skills. |
 | Zed | `AppData/Roaming/Zed/{settings.json,AGENTS.md}`; project `.zed/settings.json`, rules; `~/.agents/skills`, trusted project `.agents/skills` | Personal commit-message rules; global/workspace-root skills directories absent. No dedicated memory store identified. |
@@ -94,24 +94,28 @@ not evidence of user-authored memory. Exclude built-in `create-skill`.
 - Comment-free app code; every dice change is mirrored in alphabet (Claude, 2026-10-09).
 - Retry jobs reaped for low memory at lower parallelism; one heavy job at a time.
 
-## Compact snapshot — 2026-10-13 02:00 local (per-client times below)
+## Compact snapshot — 2026-10-13 18:30 local (per-client times below)
 
 Historical observations, not ownership claims. Results are agent-reported unless
 marked verified.
 
 **Codex.** No visible messages after October 3 07:35 UTC.
 
-**Claude — October 12 19:00 to October 13 06:30 local (main + Kino agent; a
-second Claude session runs the Tibia lane).** Five Release packs, each run
-through both cores' full suites (DISAGREE 0 every time); oracle blessed three
-times from reviewed single-flight runs (3,935 rows; blessing per the user's
-09-30 instruction to Claude). Compiler, uncommitted: 14 → 10 core pairs (shared
-Utils/Graph/ServerUtils/WDiff/server code, rest adapters or the
-Infer/Prepass/PartEval core), `ETY` type-error codes, `EJP0011` recursion guard,
-WGSL arrays/unions/records, qualified union-case patterns, GADT fixes (with the
-Tibia session). Edition-3 lexing: 820 samples, 0 output differences. Kino
-agent: target false-pass audit, canonical `sm'.show`; lib sweep 359/359 with
-cross-target agreement. xsim: X-compat checker.
+**Claude — October 13 07:18 to 18:30 local (main + Kino agent; a second Claude
+session runs the Tibia lane).** Four compiler packs, each reviewed on both
+cores' full suites (DISAGREE 0) and blessed from a reviewed single-flight run
+reproduced row for row (3,872 rows at 18:04; 0 differences): `ETY-<CaseName>`
+error codes, C self-tail loops (heap parameters, nested tail lets), iterative
+list decref, C arrays zero-filled, no-op stack-union refcounts dropped, WGSL
+unit-loop exit, Python exit code, `-fwrapv`, upstream type-level `if`, a
+language edition switch (`--edition 2` = upstream prefix `*`; default 3), lazy
+GADT payloads and record field order for upstream's ML library (it now type-checks
+and partially evaluates; blocked in Python codegen on unpublished upstream work).
+Two pack-2 regressions reached the shared Release DLL (lib `*state.level`; a
+leaked C refcount hook) and were fixed within the hour; candidates are now checked
+on lib and Tibia code before install. Kino agent: daemon pool, one front end per
+test (~4 s/test), canonical floats on 10 targets, Lean/Delphi targets, Windows
+output capture, eoie crate splits; lib sweep 324/324. Tibia lane, October 13 (second Claude session, agent-reported): apps/tibia grew typed domain modules (phantom units, readiness witnesses, unit-indexed objective GADT, HKT views, terrain layouts) and a multi-creature simulator that now predicts the live cyclops clear within noise; on clean live OTClient runs the rules policy ties vBot and a simulator-designed retreat policy beats the rules policy (19% fewer potions, n=23-24, t -3.89); several harness faults (forge, gear loss, decision tick, chase mode) were found and fixed in `tibia-local`.
 
 **Grok — October 10 16:32 to October 11 12:08 UTC.** Requests: autonomous
 Windows-native work until 11:00 local; prioritize long compile/test fixes; no new
@@ -149,10 +153,10 @@ did not. The runtime fix is to stop opening `C:\home\git` as one root and open
 only the active repositories as separate project roots; a source fix must make
 `GitStore` honor `git.disable_git`. Current thread unknown.
 
-**State, October 13 02:00 local.** User commits on October 12: spiral, eoie and
-alphabet 20:26–20:27, i574n.github 15:10, dice 10:44 local. Uncommitted since:
-spiral (compiler, Kino, lib, xsim X-compat checker) and i574n.github (backlog,
-this file). CI not rechecked since the October 12 snapshot.
+**State, October 13 18:30 local.** Uncommitted: spiral (147 paths: compiler,
+harness and samples, Kino, lib, xsim, tibia), eoie (crate splits, proxy fixes)
+and i574n.github (backlog, this file). CI not rechecked since the October 12
+snapshot.
 
 ## Refresh and coordinate
 
