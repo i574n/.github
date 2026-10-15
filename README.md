@@ -49,12 +49,16 @@ Build
 <td>
 
 - Full workflow output (PowerShell)  
-<https://i574n.github.io/.github/scripts/workflow.dib.html>
+<https://i574n.github.io/.github/scripts/workflow.livemd.html>
 
 </td>
 </tr>
 
 </table>
+
+## Agent workflows
+
+- [Agent sync: conversations, memories and skills](docs/agents/agent-sync.md)
 
 ## Contributing
 
