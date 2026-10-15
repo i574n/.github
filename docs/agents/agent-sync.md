@@ -62,7 +62,7 @@ templates, archives, trash and technical observations without user provenance.
 | Client | Where to check | This snapshot |
 | --- | --- | --- |
 | Codex | `.codex/memories`; `memories_1.sqlite`; personal skills outside `.system` | No memories, no user-authored skills. |
-| Claude | `.claude/projects/C--home-git/memory`; `.claude/skills/synced/*/manifest.json` | 45 memories (35 feedback, 7 project, 3 reference). Synced skills are vendor: exclude. |
+| Claude | `.claude/projects/C--home-git/memory`; `.claude/skills/synced/*/manifest.json` | 46 memories. Synced skills are vendor: exclude. |
 | Grok | `.grok/memory-v2/workspaces/git-437d9324`; `.grok/skills` | User-stated rules only, below. No personal skills. |
 | OpenCode | `.config/opencode`; project `AGENTS.md`, `.opencode/` | Preferences only (`cli.json`, `service.json`). No memories, agents or skills. |
 | Zed | `AppData/Roaming/Zed/{settings.json,AGENTS.md}`; project `.zed/settings.json`, rules; `~/.agents/skills`, trusted project `.agents/skills` | Personal commit-message rules; global/workspace-root skills directories absent. No dedicated memory store identified. |
@@ -94,36 +94,33 @@ not evidence of user-authored memory. Exclude built-in `create-skill`.
 - Comment-free app code; every dice change is mirrored in alphabet (Claude, 2026-10-09).
 - Retry jobs reaped for low memory at lower parallelism; one heavy job at a time.
 
-## Compact snapshot — 2026-10-14 08:58 local (per-client times below)
+## Compact snapshot — 2026-10-15 05:00 local (per-client times below)
 
 Historical observations, not ownership claims. Results are agent-reported unless
 marked verified.
 
 **Codex.** No visible messages after October 3 07:35 UTC.
 
-**Claude — October 13 18:30 to October 14 08:58 local (main + two agent lanes;
-a second Claude session runs the Tibia lane).** Overnight: Bend backend layouts,
-loops and string order (Bend rows 122 → 344; oracle blessed 3,978 → 4,200 rows),
-multi-destination dead-let pruning, a ~5× faster OpenQASM simulator, eoie
-`agile note`/`rename`, a formatter plan, and the hopacsota plan's R3 measurement
-(apps/spiral work/span 2.80). The user committed and pushed at 07:25. Since then,
-under a "touch every backlog item today" rotation until 21:00: a harness runbook
-(117 sample READMEs removed, ABI/package/brzozowski negatives fixed) verified at
-DISAGREE 0 and now being reblessed; WGSL parallel lanes (Tibia request) written
-and correct at 1/8/130 lanes in a candidate build; Python `StringSlice` off-by-one
-and F# UTF-8 string semantics fixed in source; Swift batch builds prototyped (3.1×).
-CI diagnosed (verified from run logs): spiral lib tests fail because CuPy's
-"CUDA path could not be detected" warning lands in the cuda target's output;
-dice's contract `spiral rust` fails with the cargo error swallowed; alphabet's
-Windows runner lost contact; eoie's one-line test fix awaits commit.
-Tibia lane, October 14 to 18:24 local (agent-reported): a harness fault voided the
-live results since October 13 11:48 (vBot ran alongside every Spiral run); after the
-fix, PR-4 (30 runs each) shows the simulator-designed retreat no better than vBot or
-plain rules, and the simulator predicts clear times but not potions (cause partly
-Canary's login protection; hit rate still off). Simulator: real-map routing, hunting
-ground and two-knight scenarios, all saturating under simple rules; WGSL lanes run the
-simulator bit-exact. nExBot crashes the client. User commits per the lane's plan.
-
+**Claude — October 14 07:25 to October 15 05:00 local (main + two agent lanes;
+a second Claude session runs the Tibia lane).** Day rotation (every backlog item
+touched by 14:25) then an overnight run. Compiler packs 1d–1h installed, each
+blessed from a reviewed run reproduced row for row (verified, DISAGREE 0): WGSL
+parallel lanes and chunked dispatch, Python/F# string fixes, lane A's language
+additions ('^^', record update on expressions, private unions, macro continuation,
+'!!!!' arguments as operator expressions), host `--test-blocks`/`--source-blocks`/
+`--server-tcp`, and two core pair unifications (CodegenFsharp, server main; 14
+pairs left, output unchanged). hopacsota D6 closed: deferred bfs/random evaluation
+reproduces single-flight byte for byte on apps/spiral and the full suite (keyed
+merge over four memo kinds). eoie strict evidence renewed at 04:57 (ready=True).
+Formatter (lane A): parse/comments/idempotence 86/86 on the user corpus, 116/117
+eoie packages identical Rust after formatting (the one miss a stale input).
+Tibia lane, October 14 to 15 06:40 (agent-reported): a harness fault (vBot left
+enabled) voided live results since October 13 11:48; on the fixed harness retreat
+and rules show no win over vBot (PR-4, PR-8); nExBot now runs (three harness shims)
+and retreat narrowly beats it on potions (PR-3a, t -2.14). An occupancy-aware
+router fixed most of the potion gap (PR-7 holds out of sample); a Canary swing
+rule (a knight step delays its next swing) is modeled opt-in and confirmed live (PC-3). 69 Tibia
+tests pass on pack-1h, memo off. Next there: potion fidelity (P0), baselines.
 **Grok — October 10 16:32 to October 11 12:08 UTC.** Requests: autonomous
 Windows-native work until 11:00 local; prioritize long compile/test fixes; no new
 samples. Reports: WGSL, Calyx, Kotlin, Swift, OpenQASM 3 and eBPF backends; Rust
@@ -146,27 +143,18 @@ User requested disabling Rust analyzer/Git noise. Confirmed on disk:
 `languages.Rust.language_servers=["!rust-analyzer","..."]`, Git disabled,
 status/diffs/blame hidden, and exact Git/hang log scopes set to `off` in the
 Roaming Zed settings.
-Claude, verified 2026-10-12: the 14:08 Zed opened ~48 repositories six times
-each and kept ~90 git commands running (260+ processes, ~3.9 GB), stalling the
-heavy-job gate. Per `zed/crates`, `git.disable_git` only hides UI; `git_store`
-never reads it and still runs status, three `diff --numstat` and a `cat-file`
-per repository on file changes. On Windows Zed runs the first `git` on PATH,
-here the scoop shim (shim → `cmd\git.exe` → `mingw64\bin\git.exe`). The Zed
-restarted at 16:06 still runs git: 102 processes in one burst, then 1–7 per
-sample (16:22). At 16:19, Zed's default scan exclusions were restored with the
-`"..."` splice before the custom deps/target/_build/node_modules exclusions;
-exact Git/hang scopes were disabled and the log flood stopped, but the Git work
-did not. The runtime fix is to stop opening `C:\home\git` as one root and open
-only the active repositories as separate project roots; a source fix must make
-`GitStore` honor `git.disable_git`. Current thread unknown.
-
-**State, October 14 08:58 local.** Pushed at 07:25: spiral 3c76d3ed, eoie
-9e5049b, dice 9f76ba7, alphabet 66a7884, polyglot fdc84802. CI on those (verified):
-polyglot green; spiral, dice, eoie red; alphabet ubuntu green, Windows lost.
-Uncommitted since: spiral (harness runbook, WGSL lanes, Python/F# string fixes,
-Zed grammar wiring), eoie (planning_cli test), i574n.github (backlog, this file).
-No other client has written since October 12.
-
+Claude, verified 2026-10-12: Zed still runs git per repository on file changes
+even with `git.disable_git` (it only hides UI; `GitStore` never reads it), which
+stalled the heavy-job gate when `C:\home\git` was opened as one root. Runtime fix:
+open only active repositories as separate roots; source fix: make `GitStore`
+honor `git.disable_git`. Current thread unknown.
+**State, October 15 05:00 local.** The user committed at 21:31 on October 14
+(spiral 570be6a6, eoie 530d032, polyglot dbb03adf, i574n.github 29284f5). CI on
+those (agent-reported): eoie green; spiral lib tests red only on Hex rate limits
+(lane B's fix, one resolve under a global lock, is uncommitted). Uncommitted since:
+spiral (packs 1f–1h, Kino source blocks and Hex lock, lib rust/testing guard,
+PLAN.md), eoie (Spiral test blocks, eoie_dev split, renewed state/), i574n.github
+(backlog, this file). No other client has written since October 12.
 ## Refresh and coordinate
 
 1. Read recent messages before overlapping edits or relying on another agent's
