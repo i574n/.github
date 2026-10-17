@@ -46,3 +46,11 @@ git pull
 Set-Location $ScriptDir
 
 { pwsh ../../alphabet/scripts/init.ps1 } | Invoke-Block
+
+Set-Location (New-Item -ItemType Directory -Path "../.." -Force)
+git clone --recurse-submodules https://$domain/$owner/tibia.git
+Set-Location tibia
+git pull
+Set-Location $ScriptDir
+
+{ pwsh ../../tibia/scripts/init.ps1 } | Invoke-Block

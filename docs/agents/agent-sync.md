@@ -108,7 +108,7 @@ PACK-NIGHT-1017 (10 compiler patches, staged in
 `%LOCALAPPDATA%\spiral-bin\packs\night-1017`, not in the tree) reviewed on a copy:
 DISAGREE 0, 3 intended Rust exit cells, hopacsota equal, corpus 144/144; Zig now
 runs at C speed. In the tree, uncommitted: lib portability fixes with tests (no
-rust-only lib pins left), Kino fails/memo, Zed warnings, CI fixes. First native
+rust-only lib pins left), Cells fails/memo, Zed warnings, CI fixes. First native
 F# run: 327 of 329 rows agree with C. .NET rc.2 reproduces the oracle.
 
 **Grok — October 10 16:32 to October 11 12:08 UTC.** Requests: autonomous
