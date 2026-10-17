@@ -94,33 +94,23 @@ not evidence of user-authored memory. Exclude built-in `create-skill`.
 - Comment-free app code; every dice change is mirrored in alphabet (Claude, 2026-10-09).
 - Retry jobs reaped for low memory at lower parallelism; one heavy job at a time.
 
-## Compact snapshot — 2026-10-15 05:00 local (per-client times below)
+## Compact snapshot — 2026-10-17 06:03 local (per-client times below)
 
 Historical observations, not ownership claims. Results are agent-reported unless
 marked verified.
 
 **Codex.** No visible messages after October 3 07:35 UTC.
 
-**Claude — October 14 07:25 to October 15 05:00 local (main + two agent lanes;
-a second Claude session runs the Tibia lane).** Day rotation (every backlog item
-touched by 14:25) then an overnight run. Compiler packs 1d–1h installed, each
-blessed from a reviewed run reproduced row for row (verified, DISAGREE 0): WGSL
-parallel lanes and chunked dispatch, Python/F# string fixes, lane A's language
-additions ('^^', record update on expressions, private unions, macro continuation,
-'!!!!' arguments as operator expressions), host `--test-blocks`/`--source-blocks`/
-`--server-tcp`, and two core pair unifications (CodegenFsharp, server main; 14
-pairs left, output unchanged). hopacsota D6 closed: deferred bfs/random evaluation
-reproduces single-flight byte for byte on apps/spiral and the full suite (keyed
-merge over four memo kinds). eoie strict evidence renewed at 04:57 (ready=True).
-Formatter (lane A): parse/comments/idempotence 86/86 on the user corpus, 116/117
-eoie packages identical Rust after formatting (the one miss a stale input).
-Tibia lane, October 14 to 15 06:40 (agent-reported): a harness fault (vBot left
-enabled) voided live results since October 13 11:48; on the fixed harness retreat
-and rules show no win over vBot (PR-4, PR-8); nExBot now runs (three harness shims)
-and retreat narrowly beats it on potions (PR-3a, t -2.14). An occupancy-aware
-router fixed most of the potion gap (PR-7 holds out of sample); a Canary swing
-rule (a knight step delays its next swing) is modeled opt-in and confirmed live (PC-3). 69 Tibia
-tests pass on pack-1h, memo off. Next there: potion fidelity (P0), baselines.
+**Claude — October 16 07:20 to October 17 06:03 local (main thread, no
+agents).** Packs through 1z installed; oracle single-flight-20261016-145428
+(6,906 rows, DISAGREE 0), which pack-1z reproduces (verified). Overnight:
+PACK-NIGHT-1017 (10 compiler patches, staged in
+`%LOCALAPPDATA%\spiral-bin\packs\night-1017`, not in the tree) reviewed on a copy:
+DISAGREE 0, 3 intended Rust exit cells, hopacsota equal, corpus 144/144; Zig now
+runs at C speed. In the tree, uncommitted: lib portability fixes with tests (no
+rust-only lib pins left), Kino fails/memo, Zed warnings, CI fixes. First native
+F# run: 327 of 329 rows agree with C. .NET rc.2 reproduces the oracle.
+
 **Grok — October 10 16:32 to October 11 12:08 UTC.** Requests: autonomous
 Windows-native work until 11:00 local; prioritize long compile/test fixes; no new
 samples. Reports: WGSL, Calyx, Kotlin, Swift, OpenQASM 3 and eBPF backends; Rust
@@ -148,13 +138,24 @@ even with `git.disable_git` (it only hides UI; `GitStore` never reads it), which
 stalled the heavy-job gate when `C:\home\git` was opened as one root. Runtime fix:
 open only active repositories as separate roots; source fix: make `GitStore`
 honor `git.disable_git`. Current thread unknown.
-**State, October 15 05:00 local.** The user committed at 21:31 on October 14
-(spiral 570be6a6, eoie 530d032, polyglot dbb03adf, i574n.github 29284f5). CI on
-those (agent-reported): eoie green; spiral lib tests red only on Hex rate limits
-(lane B's fix, one resolve under a global lock, is uncommitted). Uncommitted since:
-spiral (packs 1f–1h, Kino source blocks and Hex lock, lib rust/testing guard,
-PLAN.md), eoie (Spiral test blocks, eoie_dev split, renewed state/), i574n.github
-(backlog, this file). No other client has written since October 12.
+**State, October 17 06:03 local.** The user committed October 16 22:14
+(spiral d748900e, eoie e59a98a, x 559e43e, dice 08c2e14). CI green on dice, x,
+eoie; spiral's run failed on its workflow file (fixed, uncommitted). Uncommitted:
+spiral, eoie, x, the blog engine, i574n.github notes and this file (older staged
+changes there too). No other client has written since October 12.
+Claude (session b7595ac3, October 15 20:45 to October 16 01:59 local) moved everything X-related into
+the new `C:\home\git\x` repo (i574n/x, built against `spiral` cloned beside it). `x/apps/client` is the
+X client, binary `xc`: live reads with the bearer token, and live post-and-delete with OAuth 1.0a
+and OAuth 2.0 (both posts deleted). It is one Spiral package split into nine Rust crates
+(`apps/client/<crate>/`, `[package.metadata.spiral]` in each Cargo.toml); `scripts/gate.ps1` reports
+generated lines against 1000, all under except `xc_view` (1786, compiler code shape:
+RUST-UNION-IMPLS, RUST-MATCH-DUPLICATION). Every top-level block fits 280 X weight; `--x-compat` is
+clean; a git-equivalent copy beside spiral builds and passes (`scripts/build.ps1 -fast`). `x/apps/sim` is
+the former spiral `apps/xsim`; its removal from spiral is committed (d8ff1498). Backlog: X-CLIENT*,
+X-REPO-TEMPLATE, EOIE-TOPOLOGY-CRATES. The tokens live in `~/.secrets/x-api.env`; load them silently into
+the process environment; never print or read them into transcripts. On October 16 (to about 11:55 local) it made xc show post times in the machine's time
+zone (jiff; TZ overrides) and aligned names with the X API vocabulary; 42 test blocks and the e2e passed;
+x was committed at 22:14 (559e43e).
 ## Refresh and coordinate
 
 1. Read recent messages before overlapping edits or relying on another agent's
