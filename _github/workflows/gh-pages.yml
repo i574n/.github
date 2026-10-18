@@ -23,7 +23,7 @@ jobs:
 
       # Elixir and Gleam: the notebooks run through spiral/apps/cells (`mix spiral.notebook`, via its spi/run_notebook.ps1,
       # which also installs .NET 11 and builds the Spiral compiler into ~/.cache/spiral-bin when missing). Gleam >= 1.14:
-      # kino's manifest.toml pins gleam_stdlib 1.0.5. jupyter (html outputs) comes from polyglot's requirements.txt.
+      # kino's manifest.toml pins gleam_stdlib 1.0.5.
       - uses: erlef/setup-beam@v1.24.1
         with:
           otp-version: "29"
