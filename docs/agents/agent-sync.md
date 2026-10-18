@@ -65,6 +65,31 @@ workspace root that holds the repo checkouts; `<ws-slug>` is `<ws>` with `:`,
   `gh run rerun <databaseId> -R i574n/<repo>` picks the fix up. Wait with
   `gh run watch <id> --exit-status` in a background job, not a sleep loop.
 - **Backlog:** `eoie agile list|show|note <backlog> …`, run from a neutral cwd.
+  `agile list <backlog> all --json` carries `deps`, `tags`, `notes` and
+  `last_note` per task, so grooming needs no `show` per item; fix a mistyped
+  note with `agile note-edit <backlog> <id> <n> <text>` instead of appending.
+- **Many repos at once:** `eoie repo state <repo>...` prints branch, ahead and
+  behind, staged/modified/untracked totals, the last commit, and the busiest
+  areas (two path levels) per repo in one call.
+- **Result tables:** `eoie table query <file.tsv> --where col=value --group col`
+  and `eoie table diff <a.tsv> <b.tsv> --key id,backend` answer matrix
+  questions (6,994 rows in about 60 ms) without ad-hoc scripts.
+- **Long runs:** `eoie job start <label> <timeout-ms> <program> [args...]`
+  detaches a supervised job (it breaks away from the shell's job object, so the
+  session's idle reaper does not kill it), enforces the wall-clock timeout, and
+  keeps stdout/stderr/exit under `%LOCALAPPDATA%\eoie\jobs`. Then
+  `job wait <id> <max-ms>` (exits with the job's code, 124 timed out,
+  125 lost or spawn failure, 3 still running), `job status`, `job tail`,
+  `job list`. `job start --heavy ...` runs the program inside spiral's
+  `Invoke-Heavy`, so a gated build is both queued and reaper-proof. Run
+  `job wait` itself as a background shell to get the session's completion
+  notice; if the reaper kills that waiting shell, the job keeps running and a
+  new `job wait` picks it up. A running eoie.exe is locked on Windows: when
+  the job rebuilds eoie, run `job wait` from the supervisor copy
+  (`%LOCALAPPDATA%\eoie\jobs\supervisor\eoie-*.exe`), not `src/target/debug`.
+- **Arguments with quotes:** PowerShell splits native arguments that contain
+  `"`. Put one argument per line in a file and run `eoie --args-from <file>`
+  (or `-` for stdin).
 
 ## Memory and skills (user-derived only)
 
