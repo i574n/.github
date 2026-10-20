@@ -76,18 +76,72 @@ workspace root that holds the repo checkouts; `<ws-slug>` is `<ws>` with `:`,
   questions (6,994 rows in about 60 ms) without ad-hoc scripts.
 - **Long runs:** `eoie job start <label> <timeout-ms> <program> [args...]`
   detaches a supervised job (it breaks away from the shell's job object, so the
-  session's idle reaper does not kill it), enforces the wall-clock timeout, and
-  keeps stdout/stderr/exit under `%LOCALAPPDATA%\eoie\jobs`. Then
+  session's idle reaper does not kill it), enforces the wall-clock timeout
+  (stopping the whole process tree; the exit detail says if anything survived), and
+  keeps stdout/stderr/exit under `%LOCALAPPDATA%\eoie\jobs`; the job's program
+  runs without a console window. Scripts that start their own processes stay
+  hidden too: `Start-Process -WindowStyle Hidden` or `-NoNewWindow`, or
+  `ProcessStartInfo.CreateNoWindow`, never a bare `Start-Process pwsh`. Then
   `job wait <id> <max-ms>` (exits with the job's code, 124 timed out,
   125 lost or spawn failure, 3 still running), `job status`, `job tail`,
   `job list`. `job start --heavy ...` runs the program inside spiral's
   `Invoke-Heavy`, so a gated build is both queued and reaper-proof. Run
   `job wait` itself as a background shell to get the session's completion
-  notice; if the reaper kills that waiting shell, the job keeps running and a
-  new `job wait` picks it up. A running eoie.exe is locked on Windows: when
+  notice; if the reaper kills that waiting shell, the job keeps running, the
+  orphaned `job wait` ends within a second (it watches the shell that started
+  it), and a new `job wait` picks the job up. A running eoie.exe is locked on Windows: when
   the job rebuilds eoie, run `job wait` from the supervisor copy
   (`%LOCALAPPDATA%\eoie\jobs\supervisor\eoie-*.exe`), not `src/target/debug`.
-- **Arguments with quotes:** PowerShell splits native arguments that contain
+- **Read and search:** `eoie read <path>[:from-to]... [--max-lines n]`,
+  `eoie lines <path|glob>...` (path, bytes, lines table) and
+  `eoie grep <root> <needle> [--glob *.rs] [--context n] [--max n] [--ignore-case]`
+  (rayon, skips target/.git/deps). Every one ends with a receipt line
+  (`ok  files 2  bytes 33  41ms  17:52:10-04:00`), so no separate `Get-Date`.
+- **One-call programs:** `eoie do <root> '<program>'`, or `eoie do <root> -`
+  with the program on stdin (a PowerShell here-string piped in keeps every
+  quote). Statements are separated by newlines or `;`.
+  Edits: `edit <path|glob> [dry-run] [expect files N replacements M]` followed
+  by `replace once|all|<n> times "old" with "new"` lines (escapes `\n \t \" \\`;
+  an LF anchor also matches a CRLF file), plus `show <path>`. All edits are
+  validated before anything is written; a miss writes nothing and names the
+  anchor. Each changed file prints its replacement lines and sha256 before and
+  after. Queries: `search [literal] "regex" in <glob> [include *.rs,*.spi]
+  [exclude <glob>] [context n[,m]] [first n per file] [paths]`,
+  `read <path> around "text" [context n[,m]]`, `files <glob>`,
+  `head <glob> n`, `tail <glob> n`, `wait <file> ~ "regex" [timeout 5s]`
+  (exit 3 on timeout, with the file's last line). Facts: `hash a,b,c` (sha256
+  and which are equal), `env A,B`, `exists a,b`, `nearest "re" before lines
+  3,6 in <file>`, `json <file> get a.b,c.length`, `lines <file> count by
+  "(re)"`, `files <glob> count by extension`, `table <f.tsv> [where col <> "v"]
+  count by a,b`, and `dirs <dir>/* having a and b` with indented
+  `tag <name> = <file> ~ "re" [and|or|not ...]` lines and `count by <name>`,
+  and `diff <a.tsv> <b.tsv> by id,backend [on compile,exit]` (changed cells,
+  added and removed keys; replaces ad-hoc Import-Csv review scripts). Runs: `run <cmd> [timeout 10s]` (cmd /c in the root; stops
+  the whole tree on timeout), `run <cmd> until output ~ "re" timeout 20s then
+  stop`, `run <cmd> background as s1` ... `stop s1`, then `tail output n`,
+  `search "re" in output`, `errors in output by "(re)"` (grouped counts with
+  the first line each), `processes where command ~ "re"`. A run's output is
+  printed only when no later statement reads it. Edits followed by runs work
+  in one program (edits are validated and written first; a failed edit runs
+  nothing). Writes: `append <file> "- {clock:HH:mm} lane: done"` (the clock
+  fills `{clock:FMT}` with yyyy MM dd HH mm ss) and
+  `copy <glob> to <dir> [except *.tmp,...]`, each followed by read statements
+  (`tail`, `files`, `search`...) that see the written state. Git:
+  `git status a, b group by state`, `git log <repo> since <date> count by day`,
+  `git history <repo> "text" in <file>` (commits that added or removed it, plus
+  the current lines), `search "re" in <glob> with git status`, and
+  `git init|commit <repo> all "msg" [at <iso>]` for test repos. Jobs:
+  `job start <cmd> as <name> timeout 30s [notify]` starts a real supervised
+  eoie job labeled `<name>`; `job wait <name> [timeout 5m]` (also from a later
+  call) reports finished, timed out (tree stopped) or still running, with the
+  output tail; timeouts exit 3. `lab audit lab against <backlog>` gives each lab
+  folder its backlog item, status and a keep, orphan, done or stale verdict,
+  and flags non-portable `C:\Users\...` paths. Otherwise one program belongs to
+  one family (edits, queries, facts, runs, writes, git, jobs, lab).
+  `eoie --help` lists the full grammar.
+- **Processes:** `eoie ps [regex] [--tree]` (pid, ppid, start time, MB,
+  command line) and `eoie kill <pid>... [--tree]`. kill refuses its own
+  calling shell and its parents, and a pid that is already gone fails. PowerShell splits native arguments that contain
   `"`. Put one argument per line in a file and run `eoie --args-from <file>`
   (or `-` for stdin).
 

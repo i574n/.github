@@ -17,7 +17,7 @@ jobs:
 
       - uses: moonrepo/setup-rust@v1.3.0
         with:
-          channel: "nightly-2025-05-09"
+          channel: "nightly-2026-10-18"
           components: "clippy,rust-src,rustfmt"
           targets: "wasm32-unknown-unknown"
 
@@ -44,6 +44,10 @@ jobs:
       - uses: actions/setup-python@v6.3.0
         with:
           python-version: "3.12.10"
+
+      - uses: wtfjoke/setup-tectonic@v3.1.5
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - run: pwsh scripts/workflow.ps1
 

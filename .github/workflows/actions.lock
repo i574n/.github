@@ -14,6 +14,7 @@ workflows:
         - 'moonrepo/setup-rust@v1.3.0'
         - 'oven-sh/setup-bun@v2.2.0'
         - 'peaceiris/actions-gh-pages@v4.1.0'
+        - 'wtfjoke/setup-tectonic@v3.1.5'
 dependencies:
     'actions/checkout@v6.1.0':
         ref: 'v6.1.0'
@@ -65,3 +66,8 @@ dependencies:
         commit: 'sha1-84c30a85c19949d7eee79c4ff27748b70285e453'
         owner_id: 30958501
         repo_id: 187915200
+    'wtfjoke/setup-tectonic@v3.1.5':
+        ref: 'v3.1.5'
+        commit: 'sha1-8a63d072f8390efdff59da7fa08aa49e3c1f5e1b'
+        owner_id: 7139697
+        repo_id: 332029542
