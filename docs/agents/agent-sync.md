@@ -91,7 +91,13 @@ workspace root that holds the repo checkouts; `<ws-slug>` is `<ws>` with `:`,
   orphaned `job wait` ends within a second (it watches the shell that started
   it), and a new `job wait` picks the job up. A running eoie.exe is locked on Windows: when
   the job rebuilds eoie, run `job wait` from the supervisor copy
-  (`%LOCALAPPDATA%\eoie\jobs\supervisor\eoie-*.exe`), not `src/target/debug`.
+  (`%LOCALAPPDATA%\eoie\supervisor\eoie-*.exe`), not `src/target/debug`.
+- **Probe what a queued job sees with `job start`:** `job run` supervises
+  inside your own shell and environment, while `job start` goes through the
+  shared job host, whose environment (until EOIE-JOB-ENV lands) is whoever
+  started it. On 10-23 a leaked `EOIE_WINDOWS_HOME` in the host made every
+  detached window gate read an empty registry, while every `job run` probe
+  looked fine.
 - **Read and search:** `eoie read <path>[:from-to]... [--max-lines n]`,
   `eoie lines <path|glob>...` (path, bytes, lines table) and
   `eoie grep <root> <needle> [--glob *.rs] [--context n] [--max n] [--ignore-case]`
