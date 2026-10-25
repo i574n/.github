@@ -1,0 +1,3 @@
+union agile_view =
+    | View :: string * string * string -> agile_view
+inl view_subagent_main () = View ("subagent-main", "next", "--as subagent --team main")
