@@ -1,7 +1,7 @@
-param([string[]] $Repos = @('alphabet', 'dice', 'spiral', 'polyglot', 'x', 'blog', 'dir-tree-html', 'tibia', 'eoie', '.github'))
+param([string[]] $Repos = @('alphabet', 'dice', 'spiral', 'polyglot', 'x', 'blog', 'dir-tree-html', 'tibia', 'kit', '.github'), [hashtable] $TreePage = @{ blog = 'tree.html' })
 $ErrorActionPreference = 'Stop'
 $rows = foreach ($repo in $Repos) {
-    $url = "https://i574n.github.io/$repo/"
+    $url = "https://i574n.github.io/$repo/$($TreePage[$repo])"
     $pages = ((git ls-remote "https://github.com/i574n/$repo" refs/heads/gh-pages refs/heads/main 2>$null) | ForEach-Object { $sha, $ref = $_ -split "`t"; "$(Split-Path $ref -Leaf)=$($sha.Substring(0, 8))" }) -join ' '
     try {
         $page = Invoke-WebRequest $url -TimeoutSec 30 -SkipHttpErrorCheck

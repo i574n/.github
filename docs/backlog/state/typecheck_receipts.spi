@@ -3,7 +3,7 @@ union module_attestation = | RuntimeAttestation | BuildAttestation :: u64 -> mod
 union module_typecheck_receipt = | ModuleTypecheckReceipt :: string * u64 * u64 * module_attestation -> module_typecheck_receipt
 
 inl snapshot () : state_check_snapshot = StateCheckSnapshot 13388493789177953180u64
-inl receipt_0000 () : module_typecheck_receipt = ModuleTypecheckReceipt ("agile.spi", 6042953u64, 5130588203823634387u64, BuildAttestation 12991208149974910842u64)
-inl receipt_0001 () : module_typecheck_receipt = ModuleTypecheckReceipt ("prompt.spi", 376u64, 212997351722980812u64, BuildAttestation 12991208149974910842u64)
-inl receipt_0002 () : module_typecheck_receipt = ModuleTypecheckReceipt ("views.spi", 160u64, 15951268381258732569u64, BuildAttestation 12991208149974910842u64)
+inl receipt_0000 () : module_typecheck_receipt = ModuleTypecheckReceipt ("agile.spi", 6368776u64, 11325895508455425306u64, RuntimeAttestation)
+inl receipt_0001 () : module_typecheck_receipt = ModuleTypecheckReceipt ("prompt.spi", 376u64, 212997351722980812u64, BuildAttestation 12807231218701467226u64)
+inl receipt_0002 () : module_typecheck_receipt = ModuleTypecheckReceipt ("views.spi", 160u64, 15951268381258732569u64, BuildAttestation 12807231218701467226u64)
 inl main () : i32 = 0i32

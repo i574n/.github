@@ -10,6 +10,30 @@ workspace root that holds the repo checkouts; `<ws-slug>` is `<ws>` with `:`,
 `\` and `/` replaced by `-` (Claude's project folder name); `<backlog>` is
 `<ws>/i574n.github/docs/backlog`.
 
+## Get on par fast
+
+A new thread catches up fastest in this order, before opening the backlog's
+700+ rows:
+
+1. **Who is live.** `~/.claude/autonomous/standing.txt` maps each Claude
+   session id to its team (`<session>=<team>`); a session with no line is kept
+   working by the standing gate. `ListAgents` names the live peers and whether
+   each is busy or idle. Cross the two and the transcript list becomes "who is
+   who." Add your own `<session>=<team>` line.
+2. **What fits now.** `eoie agile next <backlog>` ranks machine-fit work by
+   WSJF, but it is lane-blind: its top rows are usually the owning lane's
+   in-flight work. Overlay step 1 and the item's tags before taking anything,
+   and read `agile show <id>` first — an item that looks free can be 20 notes
+   deep (it has an owner lane actively on it).
+3. **What each lane is doing now.** Tail-read only the active lanes'
+   transcripts (the "Read the tail" recipe below), mapped by step 1. Current
+   work lives there and in git, not in the backlog titles.
+4. **Add value without adding CPU.** The box is usually CPU-bound (one heavy
+   job at a time, machine-wide). A fresh session's safe, non-colliding
+   contribution is read-only measurement, grooming and drafts — never a compile
+   that slows every lane's gates. Record findings as labeled notes on the item
+   they inform; do not take over another lane's live task.
+
 ## Where each client writes
 
 | Client | Transcripts | Finding the live session |
@@ -197,5 +221,12 @@ licenses, bundled or example skills, caches, templates, archives and trash.
 
 Canonical location: `i574n.github/docs/agents/agent-sync.md`. The `mold` scoop
 bucket is a clone of `i574n/mold` at `~/scoop/buckets/mold`; `fc1943s.github`
-is a workspace hub. Point each client at this file; nothing loads it
-automatically.
+is a workspace hub. A remote kit worker node (`DESKTOP-6E8C14G`, a LAN machine;
+"worker node" / "remote node" for short) runs as a remote eoie worker, driven
+with `i574n.github/scripts/remote.ps1 <node> run|job|status|sync|fetch` over SSH
+(Tailscale fallback); machines live in `~/.config/remote-machines.json`. Its
+bootstrap and the cross-machine job dispatch live in backlog `REMOTE-WORKER-NODE`
+and `EOIE-REMOTE-EXECUTOR`. Code moves between the review box and the worker node
+by a non-git transport (the user owns git on the review box): the uncommitted
+delta is copied over SSH and proven by per-file sha256. Point each client at this
+file; nothing loads it automatically.
