@@ -15,6 +15,8 @@ param(
     [Parameter(Position = 2, ValueFromRemainingArguments)] [string[]] $Rest = @(),
     [string] $Config = (Join-Path $HOME '.config/remote-machines.json'),
     [string] $Mirror,
+    [string] $RequireCore,
+    [string] $CoreMode = 'single-flight',
     [switch] $Force
 )
 $ErrorActionPreference = 'Stop'
@@ -44,6 +46,17 @@ function Invoke-Remote([string] $command) {
     if ($script:remoteExit -ne 255) { Set-Content $addressCache $address }
 }
 
+function Assert-NodeCore([string] $expected, [string] $mode) {
+    # L6 guard: a verify/compile offload runs only if the node's SpiralCompilerCore.dll
+    # matches the expected core (the review box's for the synced HEAD). A mismatch means a
+    # stale installed compiler, whose results are invalid even when the source digest matched.
+    $envPath = ConvertTo-PwshLiteral (Join-Path $target.gitRoot 'spiral/apps/compiler/tmp/scripts/env.ps1')
+    $out = Invoke-Remote ". $envPath; `$dll = Get-SpiralCompilerDll (ConvertTo-SpiralMode '$mode') 'Release'; `$core = Join-Path (Split-Path `$dll) 'SpiralCompilerCore.dll'; if (Test-Path `$core) { (Get-FileHash `$core -Algorithm SHA256).Hash.Substring(0, 16) } else { 'MISSING' }"
+    $nodeCore = (("$out" -split "\r?\n") | Where-Object { $_.Trim() } | Select-Object -Last 1).Trim()
+    if (-not $nodeCore.ToLower().StartsWith($expected.ToLower())) { throw "remote.ps1: node $mode core $nodeCore does not match required $expected (L6: stale/mismatched compiler, or pass the full 16-hex core $nodeCore; build from the synced core before verifying)" }
+    "remote.ps1: node $mode core $nodeCore matches required $expected (L6 guard ok)"
+}
+
 function Copy-ToRemote([string] $localPath, [string] $remotePath) {
     $address = Resolve-MachineAddress
     scp -q -o "HostName=$address" $localPath "$($target.sshAlias):$($remotePath.Replace('\', '/'))"
@@ -62,9 +75,10 @@ function Get-TreeDigest([string] $root, [string[]] $paths) {
 }
 '@
 
+if ($Verb -ne 'sync' -and ($Mirror -or $Force)) { throw "remote.ps1: -Mirror and -Force belong to sync; on '$Verb' they were taken from the remote command line, which would run without them. Give the remote script a differently named parameter (e.g. -Tree for a mirror path)." }
 switch ($Verb) {
-    'run' { Invoke-Remote ($Rest -join ' '); exit $script:remoteExit }
-    'job' { Invoke-Remote ("& $(ConvertTo-PwshLiteral $target.eoie) job " + (($Rest | ForEach-Object { ConvertTo-PwshLiteral $_ }) -join ' ')); exit $script:remoteExit }
+    'run' { if ($RequireCore) { Assert-NodeCore $RequireCore $CoreMode } Invoke-Remote ($Rest -join ' '); exit $script:remoteExit }
+    'job' { if ($RequireCore) { Assert-NodeCore $RequireCore $CoreMode } Invoke-Remote ("& $(ConvertTo-PwshLiteral $target.eoie) job " + (($Rest | ForEach-Object { ConvertTo-PwshLiteral $_ }) -join ' ')); exit $script:remoteExit }
     'status' {
         Invoke-Remote (@(
             "`$os = Get-CimInstance Win32_OperatingSystem; `$cpu = (Get-CimInstance Win32_Processor | Measure-Object LoadPercentage -Average).Average"
@@ -89,15 +103,15 @@ switch ($Verb) {
         $remoteRepo = if ($Mirror) { ConvertTo-PwshLiteral (Join-Path (Join-Path $mirrorRoot $Mirror) $repo) } else { $remoteSource }
         $stage = ConvertTo-PwshLiteral $target.stage
         $head = git -C $localRepo rev-parse HEAD
-        $tracked = @((git -C $localRepo diff --name-only -z HEAD) -split "`0")
+        $tracked = @((git -C $localRepo diff --name-only --no-renames -z HEAD) -split "`0")
         $untracked = @((git -C $localRepo ls-files -o --exclude-standard -z) -split "`0")
         $changed = @($tracked + $untracked | Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $localRepo $_) -PathType Leaf) } | Sort-Object -Unique)
-        $deleted = @($tracked | Where-Object { $_ -and -not (Test-Path -LiteralPath (Join-Path $localRepo $_)) } | Sort-Object -Unique)
+        $deleted = @((git -C $localRepo diff --name-only --diff-filter=D --no-renames -z HEAD) -split "`0" | Where-Object { $_ } | Sort-Object -Unique)
         $digest = if ($changed) { Get-TreeDigest $localRepo $changed } else { 'none' }
         "sync $repo -> ${Machine}: head $($head.Substring(0, 8)), $($changed.Count) changed, $($deleted.Count) deleted, digest $digest"
-        if (-not $Force) {
+        if (-not $Force -and -not $Mirror) {
             Invoke-Remote "if (& $(ConvertTo-PwshLiteral $target.eoie) job list 50 2>&1 | Where-Object { `$_ -match 'state=(running|queued)' }) { exit 4 }"
-            if ($script:remoteExit -eq 4) { 'remote.ps1: jobs are running or queued there; pass -Force to sync under them'; exit 4 }
+            if ($script:remoteExit -eq 4) { 'remote.ps1: jobs are running or queued there; pass -Force, or use -Mirror <job> for an isolated worktree that is safe under running jobs'; exit 4 }
         }
         Invoke-Remote "New-Item -ItemType Directory -Force $stage | Out-Null; git -C $remoteSource cat-file -e '$head^{commit}' 2>`$null; if (`$LASTEXITCODE) { git -C $remoteSource fetch -q origin 2>`$null; git -C $remoteSource cat-file -e '$head^{commit}' 2>`$null }; exit `$LASTEXITCODE"
         if ($script:remoteExit -ne 0) {
@@ -136,14 +150,32 @@ switch ($Verb) {
             "git -C `$repo -c advice.detachedHead=false checkout -q --detach --force $head; if (`$LASTEXITCODE) { exit 5 }"
             "git -C `$repo clean -fdq"
             "`$changed = @(Get-Content (Join-Path `$stage '$repo.changed.txt') | Where-Object { `$_ })"
-            "foreach (`$path in (Get-Content (Join-Path `$stage '$repo.deleted.txt') | Where-Object { `$_ })) { Remove-Item -LiteralPath (Join-Path `$repo `$path) -Force -ErrorAction SilentlyContinue }"
+            "`$deletedLines = @(Get-Content (Join-Path `$stage '$repo.deleted.txt') | Where-Object { `$_ })"
+            "foreach (`$path in `$deletedLines) { Remove-Item -LiteralPath (Join-Path `$repo `$path) -Force -ErrorAction SilentlyContinue }"
+            "foreach (`$dir in (`$deletedLines | ForEach-Object { Split-Path (Join-Path `$repo `$_) -Parent } | Sort-Object Length -Descending -Unique)) { `$d = `$dir; while (`$d -and `$d -ne `$repo -and (Test-Path `$d) -and @(Get-ChildItem -LiteralPath `$d -Force -ErrorAction SilentlyContinue).Count -eq 0) { Remove-Item -LiteralPath `$d -Force -ErrorAction SilentlyContinue; `$d = Split-Path `$d -Parent } }"
             "`$archive = Join-Path `$stage '$repo.tar'"
-            "if (Test-Path `$archive) { tar -xf `$archive -C `$repo; if (`$LASTEXITCODE) { exit 6 }; Remove-Item `$archive }"
+            "if (Test-Path `$archive) { tar -xmf `$archive -C `$repo; if (`$LASTEXITCODE) { exit 6 }; Remove-Item `$archive }"
             "`$digest = if (`$changed) { Get-TreeDigest `$repo `$changed } else { 'none' }"
             "'remote head {0}, digest {1}' -f (git -C `$repo rev-parse --short=8 HEAD), `$digest"
             "if (`$digest -ne '$digest') { exit 7 }"
         ) -join "`n")
-        if ($script:remoteExit -eq 0) { "REMOTE-SYNC-OK $repo on $Machine matches this tree (head $($head.Substring(0, 8)), digest $digest)" }
-        exit $script:remoteExit
+        $syncExit = $script:remoteExit
+        if ($Mirror -and $syncExit -eq 0) {
+            # Worktree mirrors share only tracked files; spiral's deps/ holds untracked
+            # dependency clones (The-Spiral-Language, polyglot) that |core- resolution needs
+            # and `git clean` strips each sync. After the clean, link deps/ read-only from the
+            # node's shared source so every concurrent mirror resolves |core- (a link, no copy).
+            Invoke-Remote (@(
+                "`$sdeps = Join-Path $remoteSource 'deps'; `$mdeps = Join-Path $remoteRepo 'deps'"
+                "if ((Test-Path `$sdeps) -and -not @(Get-ChildItem `$mdeps -Force -ErrorAction SilentlyContinue).Count) {"
+                "  if (Test-Path `$mdeps) { Remove-Item `$mdeps -Force -Recurse -ErrorAction SilentlyContinue }"
+                "  New-Item -ItemType Junction -Path `$mdeps -Target `$sdeps -ErrorAction SilentlyContinue | Out-Null"
+                "}"
+                "`$expect = if ('$repo' -eq 'spiral') { Join-Path `$mdeps 'The-Spiral-Language' } else { `$mdeps }"
+                "if ((Test-Path `$expect) -and @(Get-ChildItem `$mdeps -Force -ErrorAction SilentlyContinue).Count) { 'MIRROR-DEPS-OK deps -> shared source' } elseif (-not (Test-Path `$sdeps)) { 'MIRROR-DEPS-NONE (the shared source has no deps/)' } else { 'MIRROR-DEPS-MISSING (|core- will fail)' }"
+            ) -join "`n")
+        }
+        if ($syncExit -eq 0) { "REMOTE-SYNC-OK $repo on $Machine matches this tree (head $($head.Substring(0, 8)), digest $digest)" }
+        exit $syncExit
     }
 }

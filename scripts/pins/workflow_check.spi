@@ -1,0 +1,49 @@
+:< sm'_operators
+:< pins
+:< workflow
+
+:== target = { repo : string; path : string; rendered : string }
+
+:~ workflow_target (repo : string) (file : string) (w : workflow) : target =
+    { repo = repo; path = repo ++# "/.github/workflows/" ++# file; rendered = render w }
+
+:~ ^ first_difference (a : array string) (b : array string) (i : i32) : i32 =
+    ? i >= (am'.length a : i32) || i >= (am'.length b : i32) ?> i
+    |? am'.index i a <> am'.index i b ?> i
+    |: first_difference a b (i + 1i32)
+
+:~ check_target (root : string) (write : bool) (t : target) : i32 =
+    := repo = root ++# "/" ++# t.repo
+    := path = root ++# "/" ++# t.path
+    := rendered = t.rendered
+    := current = ? file_system.file_exists path ?> file_system.read_all_text path |: ""
+    ? not (file_system.directory_exists repo) ?>
+        console.write_line (repo ++# ": not checked out here, skipped")
+        0i32
+    |? not (file_system.file_exists path) && not write ?>
+        console.write_line (path ++# ": missing; --write creates it from the typed source")
+        1i32
+    |? rendered = current ?>
+        console.write_line (path ++# ": identical to the typed source")
+        0i32
+    |? write ?>
+        := _ = path |> file_system.directory_get_parent |> optionm'.map file_system.create_dir_all
+        file_system.write_all_text path rendered
+        console.write_line (path ++# ": rewritten from the typed source")
+        0i32
+    |:
+        := line = first_difference (sm'.lines rendered) (sm'.lines current) 0i32
+        console.write_line (path ++# ":" ++#? (line + 1i32) ++# ": differs from the typed source")
+        1i32
+
+:~ flag_given (flag : string) : bool =
+    := at = \ (i : i32) => ?= env.try_command_line_argument i ?| | Some a => a = flag | None => false
+    at 1i32 || at 2i32
+
+:~ check_targets (label : string) (adopted : list target) (pending : list target) : i32 =
+    := root = ?= env.try_command_line_argument 0i32 ?| | Some r => r | None => "."
+    := write = flag_given "--write"
+    := targets = ? flag_given "--pending" ?> listm.append adopted pending |: adopted
+    := differing = targets |> listm.fold (\ count t => count + check_target root write t) 0i32
+    console.write_line (label ++# ": " ++#? differing ++# " workflow files differ from the typed source")
+    differing

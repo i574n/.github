@@ -1,0 +1,15 @@
+:< sm'_operators
+:< pins
+
+:~ rust_toolchain (extras : list string) : string =
+    := lines = listm.concat [["[toolchain]"; "channel = \"" ++# version_of RustMain ++# "\""]; extras]
+    listm.fold (\ text line => text ++# line ++# "\n") "" lines
+
+:~ tibia_toolchain_extras () : list string =
+    [
+        "components = [\"clippy\", \"rust-src\", \"rustfmt\"]"
+        "targets = [\"wasm32-unknown-unknown\"]"
+        "profile = \"minimal\""
+    ]
+
+:~ tibia_rust_toolchain () : string = rust_toolchain (tibia_toolchain_extras ())

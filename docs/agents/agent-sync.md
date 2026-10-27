@@ -175,6 +175,85 @@ A new thread catches up fastest in this order, before opening the backlog's
   `"`. Put one argument per line in a file and run `eoie --args-from <file>`
   (or `-` for stdin).
 
+## Offloading to the worker node
+
+A heavy **read-only** job (compile, test, review) can run on the remote kit
+worker node through `i574n.github/scripts/remote.ps1`, freeing this box.
+Results come back to scratch, never into a repo tree: a job that writes back
+into the live tree (regen/publish, `lib land.ps1`, matrix accept) races local
+edits here and stays local.
+
+1. Sync your tree into a per-job mirror (an isolated worktree; no collision
+   with other offloads): `remote.ps1 node sync <repo> -Mirror <job>`. It proves
+   the mirror matches your tree by per-file sha256 (staged files included).
+2. Run there, requiring the right compiler so a stale node core can't give a
+   false result: `remote.ps1 node run -RequireCore <core16> "Set-Location
+   C:\home\remote\<job>\<repo>\...; <cmd>"`. `<core16>` is this box's
+   `SpiralCompilerCore.dll` sha256, first 16 hex (via the compiler's
+   `env.ps1 Get-SpiralCompilerDll`); a mismatch refuses the run.
+3. Pull results: `remote.ps1 node fetch <remote path> <local scratch path>`.
+
+Each offload uses its own `-Mirror <job>` (an isolated worktree), so several
+lanes can sync the same repo into different mirrors and run at once without
+colliding. Machines live in `~/.config/remote-machines.json` (`node`; `laptop`
+is a back-compat alias). Node upkeep has no owner and no rotation: whoever
+finds it broken fixes it and appends what and why to
+`C:\home\remote-queue\node-upkeep.log` (the durable record; `node-status.txt` is
+the monitor's live one-line signal, overwritten each tick, so it is not a log).
+Long-lived node processes (the utilization monitor, any shared helper) carry an
+owner label in their log so a stale one can be traced and reclaimed. The utilization monitor (`node-watch.ps1`,
+label `node-watch`, a 24h job) publishes `node-status.txt` every ~75s; if that
+signal is stale by more than a few minutes its job timed out, and any lane revives
+it with `<eoie> job start node-watch 86400000 pwsh -NoProfile -File i574n.github/scripts/node-watch.ps1`
+(use the `%LOCALAPPDATA%\eoie\supervisor\eoie-*.exe` copy when the tree lease blocks the in-tree `eoie.exe`).
+
+Drive the node with direct `remote.ps1 <node> job start ...` calls — one
+supervised job per offload, per lane, concurrently. There is no central
+dispatcher or queue to route through (the earlier `C:\home\remote-queue\pending`
+dispatcher is retired: a single serialising router is exactly the centralisation
+we removed, and a down router silently stalls every lane behind it). The durable
+next step is `EOIE-REMOTE-EXECUTOR`'s typed coordinator over iggy pub/sub, which
+lets lanes subscribe to node state and quorum in real time instead of polling a
+file.
+
+Gotcha: `remote.ps1 <node> job start --heavy ...` needs a spiral tree (it calls
+`scripts/heavy.ps1`, or honours `EOIE_HEAVY_GATE`); outside one it fails. Plain
+`job start` (no `--heavy`) works anywhere.
+
+Gotcha: a `remote.ps1 <node> run "<cmd>"` whose `<cmd>` is more than ~2-3 KB fails
+with "The command line is too long" (Invoke-Remote base64s it as UTF-16 into the ssh
+`-EncodedCommand`, so it roughly doubles). To put a bigger file on the node, send its
+base64 in <=1400-char chunks with `Add-Content -Path <tmp>.b64 -Value '<chunk>' -NoNewline`
+(base64 is ASCII, so no quoting issues), then one `run` to
+`[IO.File]::WriteAllBytes(<dest>, [Convert]::FromBase64String((Get-Content <tmp>.b64 -Raw)))`.
+Small binary payloads (a 14 MB core, a sample dir) that exceed even that go through
+`sync` (tar, no limit) or one WriteAllBytes per small file. Also: a path with an apostrophe
+(`sm'.spi`) breaks the node pwsh parse unless single-quoted with the apostrophe doubled.
+
+`sync` carries adds, modifies, deletes and moves (collected with `--no-renames`
+and `--diff-filter=D`, proven by per-file sha256; emptied directories are
+pruned), so a mirror matches your working tree exactly. A spiral `-Mirror` also links
+`deps/` (the untracked The-Spiral-Language/polyglot clones) from the node's
+shared source after each clean, so `|core-` resolves in the mirror. Cells
+resolves the spiral runner through `SPIRAL_EXE` (persisted on the node's User
+env), not PATH, so the node's canonical `spiral.exe` must be kept freshly built
+for lib-gate results to be valid.
+
+A node job that only one lane needs to run — a rebuild of the node's canonical
+`spiral.exe`, a one-time toolchain provisioning — is a **singleton**: label it
+`node-singleton-<kind>` (e.g. `node-singleton-spiral-exe`), and before starting
+one run `remote.ps1 <node> job list` and skip it if a job with that label is
+already running or queued — `job wait` on it and use its result, or chain your
+follow-up after it, rather than starting a duplicate. On 2026-10-26 four lanes
+rebuilt the same `workspace\spiral.exe` at once under different labels; cargo's
+target lock serialized them to one real build, but four jobs held supervisors
+and CPU for nothing.
+
+**This is self-serve:
+every lane drives its own offloads directly and concurrently — no lane routes
+its node work through another.** The shared tooling and one-time node
+provisioning are a lane's to maintain, not a per-job router.
+
 ## Memory and skills (user-derived only)
 
 Keep only preferences traced to explicit user requests or corrections, and

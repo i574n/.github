@@ -17,7 +17,7 @@ $words = Join-Path $work 'words'
 $baseline = Join-Path $work 'baseline-words'
 $tracked = @(git -C $Root ls-files -- '*.spi' '*.spir' 2>$null | Where-Object { $rel = $_; -not ($Exclude | Where-Object { $rel -like $_ }) })
 $untracked = @(git -C $Root ls-files --others --exclude-standard -- '*.spi' '*.spir' 2>$null | Where-Object { $rel = $_; -not ($Exclude | Where-Object { $rel -like $_ }) })
-$files = @($tracked + $untracked | Sort-Object -Unique)
+$files = @($tracked + $untracked | Sort-Object -Unique | Where-Object { Test-Path -LiteralPath (Join-Path $Root $_) -PathType Leaf })
 if (-not $files.Count) { "no .spi files under $Root"; exit 0 }
 foreach ($rel in $files) {
     foreach ($copy in $original, $symbols, $words, $baseline) {

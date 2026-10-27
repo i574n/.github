@@ -1,0 +1,212 @@
+:< sm'_operators
+:< pins
+
+:== dispatch_input = { name : string; description : string; required : bool; default : string }
+
+:| trigger =
+    | Push : list string
+    | PullRequest : list string
+    | Dispatch
+    | DispatchInputs : list dispatch_input
+    | Schedule : list string
+
+:== matrix = { keep_going : bool; os : list string }
+
+:| runner =
+    | Runs : string
+    | Matrix : matrix
+
+:| value =
+    | Plain : string
+    | Quoted : string
+    | ToolPin : tool
+    | Lines : list string
+
+:== setting = { key : string; value : value }
+
+:== uses_step = { action : string; condition : option string; settings : list setting }
+
+:== run_step =
+    {
+        id : option string
+        name : option string
+        shell : option string
+        script : list string
+        condition : option string
+        guard_first : bool
+    }
+
+:| step =
+    | Uses : uses_step
+    | Run : run_step
+
+:== job =
+    {
+        id : string
+        needs : option string
+        condition : option string
+        minutes : i32
+        os : runner
+        access : list setting
+        env : list setting
+        steps : list step
+    }
+
+:== workflow =
+    {
+        name : string
+        triggers : list trigger
+        access : list setting
+        jobs : list job
+    }
+
+:~ uses (action : string) (settings : list setting) : step =
+    Uses { action = action; condition = None; settings = settings }
+
+:~ uses_if (action : string) (condition : string) (settings : list setting) : step =
+    Uses { action = action; condition = Some condition; settings = settings }
+
+:~ plain_run (script : list string) : run_step =
+    { id = None; name = None; shell = None; script = script; condition = None; guard_first = false }
+
+:~ run (command : string) : step = Run (plain_run [command])
+
+:~ run_if (command : string) (condition : string) : step =
+    := r = plain_run [command]
+    Run { r ?| condition = Some condition }
+
+:~ run_id (id : string) (condition : option string) (command : string) : step =
+    := r = plain_run [command]
+    Run { r ?| id = Some id; condition = condition }
+
+:~ guarded_run (condition : string) (command : string) : step =
+    := r = plain_run [command]
+    Run { r ?| condition = Some condition; guard_first = true }
+
+:~ named_script (name : string) (condition : option string) (shell : string) (script : list string) : step =
+    := r = plain_run script
+    Run { r ?| name = Some name; shell = Some shell; condition = condition }
+
+:~ job_of (id : string) (minutes : i32) (os : runner) (steps : list step) : job =
+    { id = id; needs = None; condition = None; minutes = minutes; os = os; access = []; env = []; steps = steps }
+
+:~ plain (key : string) (text : string) : setting = { key = key; value = Plain text }
+
+:~ quoted (key : string) (text : string) : setting = { key = key; value = Quoted text }
+
+:~ lines (key : string) (text : list string) : setting = { key = key; value = Lines text }
+
+:~ pinned (t : tool) : setting = { key = yaml_key t; value = ToolPin t }
+
+:~ ref_of (action : string) : string =
+    ?= action_pin_for action (action_pins ()) ?|
+    | Some p => p.ref
+    | None => failwith ("workflow: no action pin for " ++# action)
+
+:~ ^ commas (xs : list string) : string =
+    ?= xs ?|
+    | [] => ""
+    | x :: [] => x
+    | x :: rest => x ++# ", " ++# commas rest
+
+:~ value_text (v : value) : string =
+    ?= v ?|
+    | Plain text => text
+    | Quoted text => "\"" ++# text ++# "\""
+    | ToolPin t => "\"" ++# version_of t ++# "\""
+    | Lines _ => "|"
+
+:~ setting_lines (prefix : string) (s : setting) : list string =
+    := head = prefix ++# s.key ++# ": " ++# value_text s.value
+    ?= s.value ?|
+    | Lines text => head :: listm.map (\ line => prefix ++# "  " ++# line) text
+    | _ => [head]
+
+:~ block (head : string) (prefix : string) (settings : list setting) : list string =
+    ?= settings ?|
+    | [] => []
+    | _ => head :: listm.concat (listm.map (setting_lines prefix) settings)
+
+:~ optional_line (prefix : string) (condition : option string) : list string =
+    ?= condition ?| | Some c => [prefix ++# c] | None => []
+
+:~ input_lines (i : dispatch_input) : list string =
+    := required = ? i.required ?> "true" |: "false"
+    [
+        "      " ++# i.name ++# ":"
+        "        description: \"" ++# i.description ++# "\""
+        "        required: " ++# required
+        "        default: \"" ++# i.default ++# "\""
+    ]
+:~ trigger_lines (t : trigger) : list string =
+    ?= t ?|
+    | Push branches => ["  push:"; "    branches: [" ++# commas branches ++# "]"]
+    | PullRequest branches => ["  pull_request:"; "    branches: [" ++# commas branches ++# "]"]
+    | Dispatch => ["  workflow_dispatch:"]
+    | DispatchInputs inputs => "  workflow_dispatch:" :: "    inputs:" :: listm.concat (listm.map input_lines inputs)
+    | Schedule crons => "  schedule:" :: listm.map (\ cron => "    - cron: \"" ++# cron ++# "\"") crons
+
+:~ runner_lines (r : runner) : list string =
+    ?= r ?|
+    | Runs os => ["    runs-on: " ++# os]
+    | Matrix m =>
+        := keep_going = ? m.keep_going ?> ["      fail-fast: false"] |: []
+        := grid = ["      matrix:"; "        os: [" ++# commas m.os ++# "]"]
+        listm.concat [["    runs-on: ${{ matrix.os }}"; "    strategy:"]; keep_going; grid]
+
+:~ step_lines (s : step) : list string =
+    ?= s ?|
+    | Run r =>
+        := head =
+            ?= r.name ?|
+            | Some name => ["      - name: " ++# name]
+            | None => ?= r.id ?| | Some id => ["      - id: " ++# id] | None => []
+        := nested = ?= head ?| | [] => r.guard_first | _ => true
+        := run_key = ? nested ?> "        run: " |: "      - run: "
+        := body =
+            ?= r.script ?|
+            | line :: [] => [run_key ++# line]
+            | lines => (run_key ++# "|") :: listm.map (\ line => "          " ++# line) lines
+        := condition = optional_line "        if: " r.condition
+        ?= head ?|
+        | _ :: _ => listm.concat [head; condition; optional_line "        shell: " r.shell; body]
+        | [] =>
+            ?= r.condition ?|
+            | Some c when r.guard_first => ("      - if: " ++# c) :: body
+            | _ => listm.concat [body; condition]
+    | Uses u =>
+        := head = "      - uses: " ++# u.action ++# "@" ++# ref_of u.action
+        listm.concat [[head]; optional_line "        if: " u.condition; block "        with:" "          " u.settings]
+
+:~ ^ separated (blocks : list (list string)) : list string =
+    ?= blocks ?|
+    | [] => []
+    | b :: [] => b
+    | b :: rest => listm.concat [b; [""]; separated rest]
+
+:~ job_lines (j : job) : list string =
+    listm.concat
+        [
+            ["  " ++# j.id ++# ":"]
+            optional_line "    needs: " j.needs
+            optional_line "    if: " j.condition
+            ["    timeout-minutes: " ++#? j.minutes]
+            runner_lines j.os
+            block "    env:" "      " j.env
+            block "    permissions:" "      " j.access
+            ["    steps:"]
+            separated (listm.map step_lines j.steps)
+        ]
+
+:~ render (w : workflow) : string =
+    := access = ?= w.access ?| | [] => [] | _ => "" :: block "permissions:" "  " w.access
+    := lines =
+        listm.concat
+            [
+                ["name: " ++# w.name; "on:"]
+                listm.concat (listm.map trigger_lines w.triggers)
+                access
+                [""; "jobs:"]
+                separated (listm.map job_lines w.jobs)
+            ]
+    listm.fold (\ text line => text ++# line ++# "\n") "" lines

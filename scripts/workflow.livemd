@@ -8,6 +8,12 @@
 <!-- livebook:{"spiral_code":"pwsh"} -->
 
 ```pwsh
+{ pwsh pins/pins.ps1 } | Invoke-Block
+```
+
+<!-- livebook:{"spiral_code":"pwsh"} -->
+
+```pwsh
 { pwsh build.ps1 } | Invoke-Block
 ```
 

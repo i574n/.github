@@ -1,0 +1,74 @@
+:< sm'_operators
+
+:| tool =
+    | RustMain
+    | DotnetWorkflow
+    | Otp
+    | Elixir
+    | Gleam
+    | Rebar3
+    | Zig
+    | Python
+
+:== pin = { tool : tool; version : string }
+
+:= version_of (t : tool) : string =
+    ?= t ?|
+    | RustMain => "nightly-2026-10-18"
+    | DotnetWorkflow => "9.0.202"
+    | Otp => "29"
+    | Elixir => "1.20"
+    | Gleam => "1.19.2"
+    | Rebar3 => "3.28.0"
+    | Zig => "0.17.0"
+    | Python => "3.12.10"
+
+:= tool_pins () : list pin =
+    [RustMain; DotnetWorkflow; Otp; Elixir; Gleam; Rebar3; Zig; Python]
+    |> listm.map (\ t => { tool = t; version = version_of t })
+
+:== action_pin = { name : string; ref : string }
+
+:= action_pins () : list action_pin =
+    [
+        { name = "actions/cache"; ref = "v6.1.0" }
+        { name = "actions/checkout"; ref = "v7.0.1" }
+        { name = "actions/download-artifact"; ref = "v8.0.2" }
+        { name = "actions/setup-dotnet"; ref = "v6.0.0" }
+        { name = "actions/setup-go"; ref = "v7.0.0" }
+        { name = "actions/setup-python"; ref = "v7.1.0" }
+        { name = "actions/upload-artifact"; ref = "v7.0.2" }
+        { name = "awalsh128/cache-apt-pkgs-action"; ref = "master" }
+        { name = "cachix/install-nix-action"; ref = "31.11.3" }
+        { name = "erlef/setup-beam"; ref = "v1.24.1" }
+        { name = "mlugg/setup-zig"; ref = "v2.2.1" }
+        { name = "moonrepo/setup-rust"; ref = "v1.3.0" }
+        { name = "oven-sh/setup-bun"; ref = "v2.2.0" }
+        { name = "peaceiris/actions-gh-pages"; ref = "v4.1.0" }
+        { name = "snok/install-poetry"; ref = "v1.4.2" }
+        { name = "wtfjoke/setup-tectonic"; ref = "v4.0.6" }
+    ]
+
+:~ ^ action_pin_for (name : string) (xs : list action_pin) : option action_pin =
+    ?= xs ?|
+    | [] => None
+    | p :: rest => ? p.name = name ?> Some p |: action_pin_for name rest
+
+:= action_of (t : tool) : string =
+    ?= t ?|
+    | RustMain => "moonrepo/setup-rust"
+    | DotnetWorkflow => "actions/setup-dotnet"
+    | Otp | Elixir | Gleam | Rebar3 => "erlef/setup-beam"
+    | Zig => "mlugg/setup-zig"
+    | Python => "actions/setup-python"
+
+:= yaml_key (t : tool) : string =
+    ?= t ?|
+    | RustMain => "channel"
+    | DotnetWorkflow => "dotnet-version"
+    | Otp => "otp-version"
+    | Elixir => "elixir-version"
+    | Gleam => "gleam-version"
+    | Rebar3 => "rebar3-version"
+    | Zig => "version"
+    | Python => "python-version"

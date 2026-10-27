@@ -1,0 +1,78 @@
+:< sm'_operators
+:< pins
+:< workflow
+
+:~ pages_deploy () : list setting =
+    [
+        plain "github_token" "${{ secrets.GITHUB_TOKEN }}"
+        plain "publish_dir" "gh-pages"
+        plain "force_orphan" "true"
+    ]
+
+:~ pages_download () : step = uses "actions/download-artifact" [plain "name" "gh-pages"; plain "path" "gh-pages"]
+
+:~ push_job (gate : option string) (minutes : i32) (steps : list step) : job =
+    := base = job_of "push" minutes (Runs "ubuntu-24.04") steps
+    { base ?| needs = Some "build"; condition = gate; access = [plain "contents" "write"] }
+
+:~ pages_push_job (gate : option string) : job =
+    := deploy = uses "peaceiris/actions-gh-pages" (pages_deploy ())
+    push_job gate 30i32 [uses "actions/checkout" []; pages_download (); deploy]
+
+:~ deploy_check (owner : string) : list string =
+    [
+        "$url = 'https://" ++# owner ++# ".github.io/${{ github.event.repository.name }}/'"
+        "$deadline = (Get-Date).AddMinutes(6)"
+        "do {"
+        "    $live = try { (Invoke-WebRequest \"${url}_deploy.txt?t=$([DateTime]::UtcNow.Ticks)\" -SkipHttpErrorCheck)"
+            ++# ".Content.Trim() } catch { '' }"
+        "    if ($live -ne $env:GITHUB_SHA) { Start-Sleep 15 }"
+        "} while ($live -ne $env:GITHUB_SHA -and (Get-Date) -lt $deadline)"
+        "if ($live -ne $env:GITHUB_SHA) { throw \"pages serve '$live', expected $env:GITHUB_SHA\" }"
+        "$html = (Invoke-WebRequest \"${url}?t=$([DateTime]::UtcNow.Ticks)\").Content"
+        "foreach ($mark in 'id=\"readme\"|class=\"readme', 'name=\"viewport\"') "
+            ++# "{ if ($html -notmatch $mark) { throw \"index lacks $mark\" } }"
+    ]
+
+:~ verified_pages_push_job (gate : option string) (owner : string) (minutes : i32) : job =
+    := steps =
+        [
+            uses "actions/checkout" []
+            pages_download ()
+            run "echo \"$GITHUB_SHA\" > gh-pages/_deploy.txt"
+            uses "peaceiris/actions-gh-pages" (pages_deploy ())
+            named_script "verify the deploy is live" None "pwsh" (deploy_check owner)
+        ]
+    push_job gate minutes steps
+
+:~ pushed () : option string = Some "${{ !cancelled() && github.event_name == 'push' }}"
+
+:~ on_ubuntu () : string = "${{ !cancelled() && contains(matrix.os, 'ubuntu') }}"
+
+:~ pages_artifact () : list setting = [plain "name" "gh-pages"; plain "path" "dist"; plain "retention-days" "30"]
+
+:~ pages_upload () : step = uses_if "actions/upload-artifact" "contains(matrix.os, 'ubuntu')" (pages_artifact ())
+
+:~ desktop_os () : list string = ["ubuntu-24.04"; "windows-2025"]
+
+:~ beam () : step = uses "erlef/setup-beam" [pinned Otp; pinned Elixir; pinned pins.Gleam; pinned Rebar3]
+
+:~ notebook_build (before : list step) (after : list step) (upload : step) : job =
+    := rust =
+        [
+            pinned RustMain
+            quoted "components" "clippy,rust-src,rustfmt"
+            quoted "targets" "wasm32-unknown-unknown"
+        ]
+    := setup =
+        [
+            uses "actions/checkout" []
+            uses "moonrepo/setup-rust" rust
+            beam ()
+            uses "actions/setup-dotnet" [pinned DotnetWorkflow]
+            uses "oven-sh/setup-bun" []
+            uses "mlugg/setup-zig" [pinned pins.Zig]
+            uses "actions/setup-python" [pinned Python]
+        ]
+    := steps = listm.concat [setup; before; [run "pwsh scripts/workflow.ps1"]; after; [upload]]
+    job_of "build" 420i32 (Matrix { keep_going = false; os = desktop_os () }) steps

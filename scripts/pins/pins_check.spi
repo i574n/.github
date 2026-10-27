@@ -1,0 +1,106 @@
+:< sm'_operators
+:< pins
+
+:= quoted_by (quote : string) (t : string) : bool =
+    (sm.length t : i32) >= 2i32 && sm'.starts_with quote t && sm'.ends_with quote t
+
+:= unquote (s : string) : string =
+    := t = sm'.trim s
+    ? quoted_by "\"" t || quoted_by "'" t ?> sm.slice t { from = 1i32; to = (sm.length t : i32) - 2i32 }
+    |: t
+
+:~ ^ pin_for (action : string) (key : string) (xs : list pin) : option pin =
+    ?= xs ?|
+    | [] => None
+    | p :: rest =>
+        := same_action = sm'.starts_with (action_of p.tool ++# "@") action
+        ? yaml_key p.tool = key && same_action ?> Some p |: pin_for action key rest
+
+:= uses_of (line : string) : option string =
+    := t = sm'.trim line
+    := t = ? sm'.starts_with "- " t ?> sm'.trim (sm.slice t { from = 2i32; to = (sm.length t : i32) - 1i32 }) |: t
+    ? sm'.starts_with "uses:" t ?> Some (unquote (sm.slice t { from = 5i32; to = (sm.length t : i32) - 1i32 })) |: None
+
+:= value_after (key : string) (t : string) : string =
+    sm.slice t { from = (sm.length key : i32) + 1i32; to = (sm.length t : i32) - 1i32 }
+
+:== finding = { message : string; fixed : string }
+
+:= drift_of (path : string) (number : i32) (action : string) (line : string) (typed : list pin) : option finding =
+    := t = sm'.trim line
+    := colon = sm'.index_of ":" t
+    ? colon <= 0 ?> None
+    |:
+        := key = sm.slice t { from = 0i32; to = (conv colon : i32) - 1i32 }
+        ?= pin_for action key typed ?|
+        | None => None
+        | Some p =>
+            := found = unquote (value_after key t)
+            ? found = p.version ?> None
+            |:
+                := place = path ++# ":" ++#? number ++# ": " ++# key
+                := message = place ++# " found " ++# found ++# ", pins say " ++# p.version
+                Some { message = message; fixed = sm'.replace found p.version line }
+
+:= ref_drift_of (path : string) (row : i32) (uses : string) (line : string) (known : list action_pin) : option finding =
+    := at = sm'.index_of "@" uses
+    ? at <= 0 ?> None
+    |:
+        := name = sm.slice uses { from = 0i32; to = (conv at : i32) - 1i32 }
+        := ref = sm.slice uses { from = (conv at : i32) + 1i32; to = (sm.length uses : i32) - 1i32 }
+        ?= action_pin_for name known ?|
+        | None => None
+        | Some p =>
+            ? ref = p.ref ?> None
+            |:
+                := message = path ++# ":" ++#? row ++# ": " ++# name ++# " at " ++# ref ++# ", pins say " ++# p.ref
+                Some { message = message; fixed = sm'.replace ("@" ++# ref) ("@" ++# p.ref) line }
+
+:== pinset = { tools : list pin; actions : list action_pin }
+
+:= line_drift (path : string) (number : i32) (action : string) (line : string) (typed : pinset) : option finding =
+    ?= uses_of line ?|
+    | Some uses => ref_drift_of path number uses line typed.actions
+    | None => drift_of path number action line typed.tools
+
+:= report (drift : option finding) : i32 =
+    ?= drift ?|
+    | None => 0i32
+    | Some f =>
+        console.write_line f.message
+        1i32
+
+:== rebuilt = { count : i32; fixed : string; plain : string }
+
+:~ ^ scan (path : string) (text : array string) (i : i32) (action : string) (typed : pinset) (acc : rebuilt) : rebuilt =
+    ? i >= (am'.length text : i32) ?> acc
+    |:
+        := line = am'.index i text
+        := action = ?= uses_of line ?| | Some uses => uses | None => action
+        := drift = line_drift path (i + 1i32) action line typed
+        := fixed_line = ?= drift ?| | Some f => f.fixed | None => line
+        := count = acc.count + report drift
+        := next = { count = count; fixed = acc.fixed ++# fixed_line ++# "\n"; plain = acc.plain ++# line ++# "\n" }
+        scan path text (i + 1i32) action typed next
+
+:= fix_file (path : string) (original : string) (result : rebuilt) : () =
+    ? result.count = 0i32 ?> ()
+    |? result.plain <> original ?> console.write_line (path ++# ": not rewritten, its lines do not round-trip")
+    |: file_system.write_all_text path result.fixed
+
+:~ ^ check_args (index : i32) (fix : bool) (typed : pinset) (count : i32) : i32 =
+    ?= env.try_command_line_argument index ?|
+    | None => count
+    | Some path =>
+        := original = file_system.read_all_text path
+        := result = scan path (sm'.lines original) 0i32 "" typed { count = 0i32; fixed = ""; plain = "" }
+        ? fix ?> fix_file path original result
+        check_args (index + 1i32) fix typed (count + result.count)
+
+:= main () : i32 =
+    := fix = ?= env.try_command_line_argument 0i32 ?| | Some first => first = "--fix" | None => false
+    := first_path = ? fix ?> 1i32 |: 0i32
+    := drifted = check_args first_path fix { tools = tool_pins (); actions = action_pins () } 0i32
+    := verb = ? fix ?> " pin lines rewritten to" |: " pin lines disagree with"
+    console.write_line ("pins_check: " ++#? drifted ++# verb ++# " the typed source")
+    drifted

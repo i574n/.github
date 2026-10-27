@@ -1,0 +1,15 @@
+edition: 3
+packageDir: ../../../spiral/lib
+packages:
+    |core-
+    spiral-
+modules:
+    pins
+    workflow
+    org_jobs
+    workflow_check
+    nix_flake
+    editorconfig
+    rust_toolchain
+    pins_check
+    workflows
