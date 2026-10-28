@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 . ../../../spiral/scripts/core.ps1
 . ../../../spiral/lib/spiral/lib.ps1
 
-$orgRepos = 'alphabet', 'blog', 'dice', 'dir-tree-html', 'eoie', 'fiscal', 'i574n.github', 'polyglot', 'spiral', 'tibia', 'x'
+$orgRepos = 'alphabet', 'blog', 'dice', 'dir-tree-html', 'kit', 'fiscal', 'i574n.github', 'polyglot', 'spiral', 'tibia', 'x'
 
 New-Item -ItemType Directory -Force -Path dist | Out-Null
 $entries = 'pins_check', 'workflows'

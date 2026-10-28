@@ -14,6 +14,7 @@ $rows = foreach ($repo in [IO.Directory]::GetDirectories($Root)) {
     $item = Get-Item -LiteralPath $repo
     if ($item.LinkType -or -not (Test-Path (Join-Path $repo '.git'))) { continue }
     $name = $item.Name
+    [Console]::Error.WriteLine("$(Get-Date -Format HH:mm:ss) backing up $name")
     $diff = @(& git -C $repo diff --binary 2>$null)
     $index = @(& git -C $repo diff --cached --binary 2>$null)
     $untracked = @(& git -C $repo ls-files --others --exclude-standard -z 2>$null | ForEach-Object { $_ -split "`0" } | Where-Object { $_ })

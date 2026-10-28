@@ -102,6 +102,7 @@ switch ($Verb) {
         $mirrorRoot = if ($target.mirrorBase) { $target.mirrorBase } else { 'C:\home\remote' }
         $remoteRepo = if ($Mirror) { ConvertTo-PwshLiteral (Join-Path (Join-Path $mirrorRoot $Mirror) $repo) } else { $remoteSource }
         $stage = ConvertTo-PwshLiteral $target.stage
+        $syncToken = "$repo-$PID-$([DateTime]::UtcNow.Ticks)"
         $head = git -C $localRepo rev-parse HEAD
         $tracked = @((git -C $localRepo diff --name-only --no-renames -z HEAD) -split "`0")
         $untracked = @((git -C $localRepo ls-files -o --exclude-standard -z) -split "`0")
@@ -119,29 +120,29 @@ switch ($Verb) {
             $sharesRemoteHead = $false
             if ($remoteHead -match '^[0-9a-f]{40}$') { git -C $localRepo cat-file -e "$remoteHead^{commit}" 2>$null; $sharesRemoteHead = $LASTEXITCODE -eq 0 }
             $range = if ($sharesRemoteHead) { @('HEAD', '--not', $remoteHead) } else { @('HEAD') }
-            $bundle = Join-Path ([IO.Path]::GetTempPath()) "remote-sync-$repo.bundle"
+            $bundle = Join-Path ([IO.Path]::GetTempPath()) "remote-sync-$syncToken.bundle"
             git -C $localRepo bundle create $bundle @range 2>$null
             if ($LASTEXITCODE) { throw "remote.ps1: git bundle failed for $repo" }
-            Copy-ToRemote $bundle (Join-Path $target.stage "$repo.bundle")
+            Copy-ToRemote $bundle (Join-Path $target.stage "$syncToken.bundle")
             Remove-Item $bundle
-            Invoke-Remote "`$bundle = Join-Path $stage '$repo.bundle'; git -C $remoteSource fetch -q `$bundle HEAD; `$code = `$LASTEXITCODE; Remove-Item `$bundle; exit `$code"
+            Invoke-Remote "`$bundle = Join-Path $stage '$syncToken.bundle'; git -C $remoteSource fetch -q `$bundle HEAD; `$code = `$LASTEXITCODE; Remove-Item `$bundle; exit `$code"
             if ($script:remoteExit -ne 0) { throw "remote.ps1: the remote could not fetch the bundle of $repo" }
         }
         if ($Mirror) {
             Invoke-Remote "if (-not (Test-Path $remoteRepo)) { New-Item -ItemType Directory -Force (Split-Path $remoteRepo) | Out-Null; git -C $remoteSource worktree add --detach --force $remoteRepo $head 2>&1 | Out-Null; if (`$LASTEXITCODE) { exit 8 } }"
             if ($script:remoteExit -ne 0) { throw "remote.ps1: could not create worktree mirror $Mirror for $repo" }
         }
-        $work = Join-Path ([IO.Path]::GetTempPath()) "remote-sync-$repo"
+        $work = Join-Path ([IO.Path]::GetTempPath()) "remote-sync-$syncToken"
         New-Item -ItemType Directory -Force $work | Out-Null
         [IO.File]::WriteAllText((Join-Path $work 'changed.txt'), (($changed + '') -join "`n"))
         [IO.File]::WriteAllText((Join-Path $work 'deleted.txt'), (($deleted + '') -join "`n"))
-        Copy-ToRemote (Join-Path $work 'changed.txt') (Join-Path $target.stage "$repo.changed.txt")
-        Copy-ToRemote (Join-Path $work 'deleted.txt') (Join-Path $target.stage "$repo.deleted.txt")
+        Copy-ToRemote (Join-Path $work 'changed.txt') (Join-Path $target.stage "$syncToken.changed.txt")
+        Copy-ToRemote (Join-Path $work 'deleted.txt') (Join-Path $target.stage "$syncToken.deleted.txt")
         if ($changed) {
             $archive = Join-Path $work 'tree.tar'
             tar -cf $archive -C $localRepo -T (Join-Path $work 'changed.txt')
             if ($LASTEXITCODE) { throw "remote.ps1: tar failed for $repo" }
-            Copy-ToRemote $archive (Join-Path $target.stage "$repo.tar")
+            Copy-ToRemote $archive (Join-Path $target.stage "$syncToken.tar")
         }
         Remove-Item -Recurse -Force $work
         Invoke-Remote (@(
@@ -149,11 +150,12 @@ switch ($Verb) {
             "`$repo = $remoteRepo; `$stage = $stage"
             "git -C `$repo -c advice.detachedHead=false checkout -q --detach --force $head; if (`$LASTEXITCODE) { exit 5 }"
             "git -C `$repo clean -fdq"
-            "`$changed = @(Get-Content (Join-Path `$stage '$repo.changed.txt') | Where-Object { `$_ })"
-            "`$deletedLines = @(Get-Content (Join-Path `$stage '$repo.deleted.txt') | Where-Object { `$_ })"
+            "`$changed = @(Get-Content (Join-Path `$stage '$syncToken.changed.txt') | Where-Object { `$_ })"
+            "`$deletedLines = @(Get-Content (Join-Path `$stage '$syncToken.deleted.txt') | Where-Object { `$_ })"
+            "Remove-Item -LiteralPath (Join-Path `$stage '$syncToken.changed.txt'), (Join-Path `$stage '$syncToken.deleted.txt') -Force -ErrorAction SilentlyContinue"
             "foreach (`$path in `$deletedLines) { Remove-Item -LiteralPath (Join-Path `$repo `$path) -Force -ErrorAction SilentlyContinue }"
             "foreach (`$dir in (`$deletedLines | ForEach-Object { Split-Path (Join-Path `$repo `$_) -Parent } | Sort-Object Length -Descending -Unique)) { `$d = `$dir; while (`$d -and `$d -ne `$repo -and (Test-Path `$d) -and @(Get-ChildItem -LiteralPath `$d -Force -ErrorAction SilentlyContinue).Count -eq 0) { Remove-Item -LiteralPath `$d -Force -ErrorAction SilentlyContinue; `$d = Split-Path `$d -Parent } }"
-            "`$archive = Join-Path `$stage '$repo.tar'"
+            "`$archive = Join-Path `$stage '$syncToken.tar'"
             "if (Test-Path `$archive) { tar -xmf `$archive -C `$repo; if (`$LASTEXITCODE) { exit 6 }; Remove-Item `$archive }"
             "`$digest = if (`$changed) { Get-TreeDigest `$repo `$changed } else { 'none' }"
             "'remote head {0}, digest {1}' -f (git -C `$repo rev-parse --short=8 HEAD), `$digest"

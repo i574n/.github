@@ -1,11 +1,11 @@
 param([Parameter(Mandatory)] [string] $Ids, [int] $MaxMinutes = 300)
 $env:KIT_LEASE_POLICY = 'renewing'
 $cli = 'C:\home\git\kit\kit.exe'
-$ids = @($Ids -split ',')
+$watched = @($Ids -split ',' | Where-Object { $_ })
 $deadline = (Get-Date).AddMinutes($MaxMinutes)
 $done = @{}
-while ($done.Count -lt $ids.Count -and (Get-Date) -lt $deadline) {
-    foreach ($id in $ids) {
+while ($done.Count -lt $watched.Count -and (Get-Date) -lt $deadline) {
+    foreach ($id in $watched) {
         if ($done.ContainsKey($id)) { continue }
         $s = (& $cli job status $id 2>&1 | Select-Object -First 1) -as [string]
         if ($s -match 'state=(finished|failed|stopped|timed-out)') {
@@ -15,6 +15,6 @@ while ($done.Count -lt $ids.Count -and (Get-Date) -lt $deadline) {
             "$id -> $($done[$id])"
         }
     }
-    if ($done.Count -lt $ids.Count) { Start-Sleep -Seconds 60 }
+    if ($done.Count -lt $watched.Count) { Start-Sleep -Seconds 60 }
 }
-if ($done.Count -lt $ids.Count) { "watcher deadline hit; still open: $(($ids | Where-Object { -not $done.ContainsKey($_) }) -join ', ')" }
+if ($done.Count -lt $watched.Count) { "watcher deadline hit; still open: $(($watched | Where-Object { -not $done.ContainsKey($_) }) -join ', ')" }

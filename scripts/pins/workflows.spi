@@ -302,7 +302,7 @@
         ]
     := pending =
         [
-            workflow_target "eoie" "gh-pages.yml" (kit ())
-            { repo = "eoie"; path = "eoie/.editorconfig"; rendered = editorconfig () }
+            workflow_target "kit" "gh-pages.yml" (kit ())
+            { repo = "kit"; path = "kit/.editorconfig"; rendered = editorconfig () }
         ]
     check_targets "workflows" targets pending
