@@ -50,7 +50,7 @@ $rows | Group-Object Machine, Team | ForEach-Object {
 $rows | Sort-Object Hours -Descending | Select-Object -First 10 Machine, Label, State, Exit, @{ n = 'WallH'; e = { [math]::Round($_.Hours, 2) } }, PeakMb | Format-Table -AutoSize | Out-String -Width 160
 
 "=== box processes by name, outside any live kit job's tree and any Claude session, at least 200 MB working set (candidates for dangling)"
-$all = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, WorkingSetSize)
+$all = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, WorkingSetSize, CommandLine, UserModeTime, KernelModeTime)
 $byId = @{}; foreach ($p in $all) { $byId[[int]$p.ProcessId] = $p }
 $jobRoots = @(Get-ChildItem "$env:LOCALAPPDATA\kit\jobs" -Directory | Where-Object { -not (Test-Path (Join-Path $_.FullName 'exit')) } | ForEach-Object {
     foreach ($f in 'pid', 'supervisor') { $p = Join-Path $_.FullName $f; if (Test-Path $p) { [int](Get-Content -LiteralPath $p -Raw).Trim() } }
@@ -83,6 +83,19 @@ function Get-Owner([int] $Id) {
 $all | Where-Object { -not $inJob[[int]$_.ProcessId] -and $_.WorkingSetSize -ge 200MB } | ForEach-Object { $_ | Add-Member Owner (Get-Owner ([int]$_.ProcessId)) -PassThru } | Group-Object Name, Owner | ForEach-Object {
     [pscustomobject]@{ Name = $_.Group[0].Name; Owner = $_.Group[0].Owner; Count = $_.Count; WorkingSetMb = [math]::Round(($_.Group | Measure-Object WorkingSetSize -Sum).Sum / 1MB) }
 } | Sort-Object WorkingSetMb -Descending | Format-Table -AutoSize | Out-String -Width 160
+
+"=== Claude session tool shells by lane (live processes under each session's claude.exe; --resume names the lane, i574n is main)"
+$sessionOf = @{}
+foreach ($c in $all | Where-Object { $_.Name -eq 'claude.exe' -and "$($_.CommandLine)" -match 'claude-code' }) {
+    $sessionOf[[int]$c.ProcessId] = if ("$($c.CommandLine)" -match '--resume\s+(\S+)') { if ($Matches[1] -eq 'i574n') { 'main' } else { $Matches[1] } } else { '(no --resume)' }
+}
+$all | Where-Object { $_.Name -ne 'claude.exe' } | ForEach-Object {
+    $seen = @{}; $cur = [int]$_.ParentProcessId; $lane = $null
+    while ($cur -and -not $seen[$cur]) { $seen[$cur] = 1; if ($sessionOf.ContainsKey($cur)) { $lane = $sessionOf[$cur]; break }; $cur = if ($byId[$cur]) { [int]$byId[$cur].ParentProcessId } else { 0 } }
+    if ($lane) { [pscustomobject]@{ Lane = $lane; Ws = $_.WorkingSetSize; Cpu = ([double]$_.UserModeTime + [double]$_.KernelModeTime) / 1e7 } }
+} | Group-Object Lane | ForEach-Object {
+    [pscustomobject]@{ Lane = $_.Name; Processes = $_.Count; WorkingSetMb = [math]::Round(($_.Group | Measure-Object Ws -Sum).Sum / 1MB); CpuSeconds = [math]::Round(($_.Group | Measure-Object Cpu -Sum).Sum) }
+} | Sort-Object CpuSeconds -Descending | Format-Table -AutoSize | Out-String -Width 160
 
 "=== box CPU right now, by process name (TotalProcessorTime delta over $SampleSec s; 100% = all $([Environment]::ProcessorCount) logical cores)"
 $before = @{}; foreach ($p in Get-Process) { try { $before[$p.Id] = @($p.Name, $p.TotalProcessorTime.TotalSeconds) } catch { } }

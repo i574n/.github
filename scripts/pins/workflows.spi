@@ -280,7 +280,7 @@
             workflow_target "fiscal" "gh-pages.yml" (fiscal ())
             workflow_target "tibia" "gh-pages.yml" (tibia ())
             workflow_target "x" "ci.yml" (x_ci ())
-            { repo = "spiral"; path = "spiral/lab/CI-NIX/flake.nix"; rendered = flake () }
+            { repo = "spiral"; path = "spiral/flake.nix"; rendered = flake () }
             { repo = "polyglot"; path = "polyglot/.editorconfig"; rendered = editorconfig () }
             { repo = "spiral"; path = "spiral/.editorconfig"; rendered = editorconfig () }
             { repo = "i574n.github"; path = "i574n.github/.editorconfig"; rendered = editorconfig () }

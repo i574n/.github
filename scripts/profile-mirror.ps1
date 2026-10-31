@@ -16,7 +16,12 @@ $wholeTrees = @(
     (Join-Path $claude 'autonomous'),
     (Join-Path $env:LOCALAPPDATA 'kit\backups'),
     (Join-Path $env:LOCALAPPDATA 'kit\jobs'),
-    (Join-Path $env:LOCALAPPDATA 'kit\windows')
+    (Join-Path $env:LOCALAPPDATA 'kit\windows'),
+    (Join-Path $env:LOCALAPPDATA 'kit\config-baseline'),
+    (Join-Path $profileRoot 'scoop\persist\notepadplusplus\backup'),
+    # Lane-requested irreproducible stores (added via the resilience lane). Keep small.
+    (Join-Path $env:LOCALAPPDATA 'fiscal-undo'),
+    (Join-Path $env:LOCALAPPDATA 'tibia-mariadb-dumps')
 )
 $singleFiles = @(
     (Join-Path $claude 'settings.json'),
@@ -24,7 +29,25 @@ $singleFiles = @(
     (Join-Path $profileRoot '.config\remote-machines.json'),
     (Join-Path $profileRoot '.ssh\config'),
     (Join-Path $profileRoot '.ssh\known_hosts'),
-    'C:\home\data\rescue-2026-10-28\loss-map.md'
+    'C:\home\data\rescue-2026-10-28\loss-map.md',
+    (Join-Path $profileRoot '.wslconfig'),
+    (Join-Path $profileRoot '.npmrc'),
+    (Join-Path $profileRoot '.config\scoop\config.json'),
+    (Join-Path $profileRoot 'scoop\persist\notepadplusplus\session.xml'),
+    (Join-Path $profileRoot 'scoop\persist\notepadplusplus\config.xml'),
+    (Join-Path $env:LOCALAPPDATA 'Microsoft\Edge\User Data\Default\Bookmarks'),
+    (Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json'),
+    (Join-Path $env:APPDATA 'Microsoft\Spelling\neutral\default.dic'),
+    (Join-Path $env:APPDATA 'Zed\settings.json'),
+    (Join-Path $env:APPDATA 'Zed\keymap.json'),
+    (Join-Path $profileRoot 'OneDrive\Documents\PowerShell\profile.ps1'),
+    (Join-Path $profileRoot 'OneDrive\Documents\PowerShell\Microsoft.PowerShell_profile.ps1')
+)
+$globFiles = @(
+    (Join-Path $profileRoot 'scoop\shims\scoop-*.ps1'),
+    (Join-Path $profileRoot 'scoop\shims\shovel*'),
+    (Join-Path $profileRoot 'scoop\persist\*\data\user-data\User\settings.json'),
+    (Join-Path $profileRoot 'scoop\persist\*\data\user-data\User\keybindings.json')
 )
 $scratchRoot = Join-Path $env:TEMP 'claude'
 
@@ -76,9 +99,12 @@ foreach ($route in $Routes) {
 if (-not $reached) { throw "profile-mirror: no route reached the node ($($Routes -join ', ')); the archive stays at $archive" }
 scp -q $archive "${reached}:$RemoteDir/"
 if ($LASTEXITCODE -ne 0) { throw "profile-mirror: scp failed over $reached; the archive stays at $archive" }
-$check = "`$f = '$RemoteDir/profile-mirror-$stamp.tgz'; (Get-FileHash `$f).Hash; Get-ChildItem '$RemoteDir' -Filter 'profile-mirror-*.tgz' | Sort-Object Name -Descending | Select-Object -Skip $Keep | Remove-Item"
-$remoteHash = ssh $reached "pwsh -NoProfile -EncodedCommand $(ConvertTo-EncodedCommand $check)" 2>$null | Select-Object -First 1
-if ("$remoteHash".Trim() -ne $hash) { throw "profile-mirror: hash mismatch on the node (local $hash, node $remoteHash); the archive stays at $archive" }
+$localSize = (Get-Item $archive).Length
+# Verify the transfer on the node cheaply: a truncated/corrupt scp fails either the size match or tar's own listing.
+# A full remote Get-FileHash over ~800 MB was the hot-path wedge point (n19); the restore drill does deeper verification daily.
+$check = "`$f = '$RemoteDir/profile-mirror-$stamp.tgz'; `"`$((Get-Item `$f).Length) `$(@(tar -tzf `$f 2>`$null).Count)`"; Get-ChildItem '$RemoteDir' -Filter 'profile-mirror-*.tgz' | Sort-Object Name -Descending | Select-Object -Skip $Keep | Remove-Item"
+$remote = (ssh -o ConnectTimeout=8 $reached "pwsh -NoProfile -EncodedCommand $(ConvertTo-EncodedCommand $check)" 2>$null | Select-Object -First 1) -split '\s+'
+if ([long]$remote[0] -ne $localSize -or [int]$remote[1] -ne $entries) { throw "profile-mirror: node verify mismatch (local $localSize B/$entries entries, node $($remote[0]) B/$($remote[1]) entries); the archive stays at $archive" }
 . (Join-Path $PSScriptRoot 'safe-delete.ps1')
 Remove-TreeSafely $work
 "profile-mirror: $reached $RemoteDir/profile-mirror-$stamp.tgz sha256 $hash, keeping the newest $Keep"

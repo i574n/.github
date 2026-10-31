@@ -1,5 +1,6 @@
-param([string[]] $Slices = @(), [string[]] $Files = @(), [string] $Drafts = 'C:\home\data\lib-drafts')
+param([string[]] $Slices = @(), [string[]] $Files = @(), [string] $Drafts = '')
 $ErrorActionPreference = 'Stop'
+if ($Slices -and -not $Drafts) { throw "slice-roundtrip-sweep: -Slices needs -Drafts, the folder holding <slice>\apply.ps1" }
 $root = Join-Path $env:TEMP "slice-roundtrip-$(Get-Date -Format HHmmss)"
 $base = Join-Path $root 'base\lib'
 robocopy C:\home\git\spiral\lib $base *.spi *.spir /S /XJD /XD target node_modules _build build .cache /R:2 /W:2 /NFL /NDL /NJH /NJS /NP | Out-Null

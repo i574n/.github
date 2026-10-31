@@ -1,6 +1,5 @@
 param([string[]] $Repos = @(), [string] $PostabilityProfile = 'C:\home\git\x\postability\x.json')
 $ErrorActionPreference = 'Stop'
-(Get-Process -Id $PID).PriorityClass = 'BelowNormal'
 $env:SPIRAL_POSTABILITY_PROFILE = $PostabilityProfile
 $dll = Join-Path $env:LOCALAPPDATA 'spiral-bin\bin\single-flight\SpiralCompiler\Release\net11.0\SpiralCompiler.dll'
 $all = [ordered]@{

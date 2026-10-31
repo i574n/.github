@@ -1,5 +1,7 @@
 param(
-    [Parameter(Mandatory)] [string] $Program,
+    [string] $Program = '',
+    [string] $Note = '',
+    [string] $Backlog = 'C:\home\git\i574n.github\docs\backlog',
     [Parameter(Mandatory)] [string] $File,
     [Parameter(Mandatory)] [string] $Base,
     [Parameter(Mandatory)] [string] $Target,
@@ -15,12 +17,24 @@ if (-not (Test-Path -LiteralPath $kit)) { $kit = Get-ChildItem "$env:LOCALAPPDAT
 $lib = 'C:\home\git\spiral\lib\spiral'
 $live = Join-Path $lib $File
 function Get-Hash16([string] $Path) { (Get-FileHash -LiteralPath $Path).Hash.Substring(0, 16) }
+if (!$Program -eq !$Note) { throw 'land-lib-program: pass exactly one of -Program <file> or -Note <ITEM>/<n>' }
+$undoName = if ($Note) { $Note -replace '/', '-n' } else { [IO.Path]::GetFileNameWithoutExtension($Program) }
+$undo = Join-Path $env:LOCALAPPDATA "kit\undo\$undoName"
+if ($Note) {
+    $id, $number = $Note -split '/', 2
+    $marker = 'PROGRAM (kit do <lib> -):'
+    $text = "$((& $kit agile show $Backlog $id --json | ConvertFrom-Json).notes[[int]$number - 1].text)"
+    $at = $text.IndexOf($marker)
+    if ($at -lt 0) { "land-lib-program / $Note has no '$marker' block"; exit 3 }
+    New-Item -ItemType Directory -Force $undo | Out-Null
+    $Program = Join-Path $undo 'program.kitdo'
+    [IO.File]::WriteAllText($Program, $text.Substring($at + $marker.Length).TrimStart("`r", "`n"))
+}
 $have = Get-Hash16 $live
 if ($have -eq $Target) { "land-lib-program / $File already at $Target" }
 elseif ($have -ne $Base) { "land-lib-program / $File is $have, not the proven base ${Base}; re-anchor first"; exit 4 }
 else {
     $guardArgs = @(if ($ExemptWindow) { '-ExemptWindow'; $ExemptWindow -join ',' }) + @(if ($ExemptAncestry) { '-ExemptAncestry'; $ExemptAncestry })
-    $undo = Join-Path 'C:\home\data\undo' ([IO.Path]::GetFileNameWithoutExtension($Program))
     New-Item -ItemType Directory -Force $undo | Out-Null
     Copy-Item -LiteralPath $live (Join-Path $undo "$File.$have") -Force
     $out = @(pwsh -NoProfile -File (Join-Path $PSScriptRoot 'lib-guarded-do.ps1') -Program $Program @guardArgs 2>&1 | ForEach-Object { "$_" })

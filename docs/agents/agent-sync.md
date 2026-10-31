@@ -3,7 +3,7 @@
 How agents on this machine find and read each other's work quickly through the
 local file system, and the rules for working side by side. This file holds
 lookup recipes, not lane status: work state, results and handoffs go to the
-backlog (`eoie agile note`) and to git history.
+backlog (`kit agile note`) and to git history.
 
 Placeholders: `~` is the user profile (`$HOME`, `%USERPROFILE%`); `<ws>` is the
 workspace root that holds the repo checkouts; `<ws-slug>` is `<ws>` with `:`,
@@ -20,7 +20,7 @@ A new thread catches up fastest in this order, before opening the backlog's
    working by the standing gate. `ListAgents` names the live peers and whether
    each is busy or idle. Cross the two and the transcript list becomes "who is
    who." Add your own `<session>=<team>` line.
-2. **What fits now.** `eoie agile next <backlog>` ranks machine-fit work by
+2. **What fits now.** `kit agile next <backlog>` ranks machine-fit work by
    WSJF, but it is lane-blind: its top rows are usually the owning lane's
    in-flight work. Overlay step 1 and the item's tags before taking anything,
    and read `agile show <id>` first — an item that looks free can be 20 notes
@@ -88,21 +88,21 @@ A new thread catches up fastest in this order, before opening the backlog's
 - **After a spiral fix:** consumers clone spiral `main` at run time, so
   `gh run rerun <databaseId> -R i574n/<repo>` picks the fix up. Wait with
   `gh run watch <id> --exit-status` in a background job, not a sleep loop.
-- **Backlog:** `eoie agile list|show|note <backlog> …`, run from a neutral cwd.
+- **Backlog:** `kit agile list|show|note <backlog> …`, run from a neutral cwd.
   `agile list <backlog> all --json` carries `deps`, `tags`, `notes` and
   `last_note` per task, so grooming needs no `show` per item; fix a mistyped
   note with `agile note-edit <backlog> <id> <n> <text>` instead of appending.
-- **Many repos at once:** `eoie repo state <repo>...` prints branch, ahead and
+- **Many repos at once:** `kit repo state <repo>...` prints branch, ahead and
   behind, staged/modified/untracked totals, the last commit, and the busiest
   areas (two path levels) per repo in one call.
-- **Result tables:** `eoie table query <file.tsv> --where col=value --group col`
-  and `eoie table diff <a.tsv> <b.tsv> --key id,backend` answer matrix
+- **Result tables:** `kit table query <file.tsv> --where col=value --group col`
+  and `kit table diff <a.tsv> <b.tsv> --key id,backend` answer matrix
   questions (6,994 rows in about 60 ms) without ad-hoc scripts.
-- **Long runs:** `eoie job start <label> <timeout-ms> <program> [args...]`
+- **Long runs:** `kit job start <label> <timeout-ms> <program> [args...]`
   detaches a supervised job (it breaks away from the shell's job object, so the
   session's idle reaper does not kill it), enforces the wall-clock timeout
   (stopping the whole process tree; the exit detail says if anything survived), and
-  keeps stdout/stderr/exit under `%LOCALAPPDATA%\eoie\jobs`; the job's program
+  keeps stdout/stderr/exit under `%LOCALAPPDATA%\kit\jobs`; the job's program
   runs without a console window. Scripts that start their own processes stay
   hidden too: `Start-Process -WindowStyle Hidden` or `-NoNewWindow`, or
   `ProcessStartInfo.CreateNoWindow`, never a bare `Start-Process pwsh`. Then
@@ -113,21 +113,21 @@ A new thread catches up fastest in this order, before opening the backlog's
   `job wait` itself as a background shell to get the session's completion
   notice; if the reaper kills that waiting shell, the job keeps running, the
   orphaned `job wait` ends within a second (it watches the shell that started
-  it), and a new `job wait` picks the job up. A running eoie.exe is locked on Windows: when
-  the job rebuilds eoie, run `job wait` from the supervisor copy
-  (`%LOCALAPPDATA%\eoie\supervisor\eoie-*.exe`), not `src/target/debug`.
+  it), and a new `job wait` picks the job up. A running kit.exe is locked on Windows: when
+  the job rebuilds kit, run `job wait` from the supervisor copy
+  (`%LOCALAPPDATA%\kit\supervisor\kit-*.exe`), not `src/target/debug`.
 - **Probe what a queued job sees with `job start`:** `job run` supervises
   inside your own shell and environment, while `job start` goes through the
   shared job host, whose environment (until EOIE-JOB-ENV lands) is whoever
   started it. On 10-23 a leaked `EOIE_WINDOWS_HOME` in the host made every
   detached window gate read an empty registry, while every `job run` probe
   looked fine.
-- **Read and search:** `eoie read <path>[:from-to]... [--max-lines n]`,
-  `eoie lines <path|glob>...` (path, bytes, lines table) and
-  `eoie grep <root> <needle> [--glob *.rs] [--context n] [--max n] [--ignore-case]`
+- **Read and search:** `kit read <path>[:from-to]... [--max-lines n]`,
+  `kit lines <path|glob>...` (path, bytes, lines table) and
+  `kit grep <root> <needle> [--glob *.rs] [--context n] [--max n] [--ignore-case]`
   (rayon, skips target/.git/deps). Every one ends with a receipt line
   (`ok  files 2  bytes 33  41ms  17:52:10-04:00`), so no separate `Get-Date`.
-- **One-call programs:** `eoie do <root> '<program>'`, or `eoie do <root> -`
+- **One-call programs:** `kit do <root> '<program>'`, or `kit do <root> -`
   with the program on stdin (a PowerShell here-string piped in keeps every
   quote). Statements are separated by newlines or `;`.
   Edits: `edit <path|glob> [dry-run] [expect files N replacements M]` followed
@@ -162,17 +162,17 @@ A new thread catches up fastest in this order, before opening the backlog's
   the current lines), `search "re" in <glob> with git status`, and
   `git init|commit <repo> all "msg" [at <iso>]` for test repos. Jobs:
   `job start <cmd> as <name> timeout 30s [notify]` starts a real supervised
-  eoie job labeled `<name>`; `job wait <name> [timeout 5m]` (also from a later
+  kit job labeled `<name>`; `job wait <name> [timeout 5m]` (also from a later
   call) reports finished, timed out (tree stopped) or still running, with the
   output tail; timeouts exit 3. `lab audit lab against <backlog>` gives each lab
   folder its backlog item, status and a keep, orphan, done or stale verdict,
   and flags non-portable `C:\Users\...` paths. Otherwise one program belongs to
   one family (edits, queries, facts, runs, writes, git, jobs, lab).
-  `eoie --help` lists the full grammar.
-- **Processes:** `eoie ps [regex] [--tree]` (pid, ppid, start time, MB,
-  command line) and `eoie kill <pid>... [--tree]`. kill refuses its own
+  `kit --help` lists the full grammar.
+- **Processes:** `kit ps [regex] [--tree]` (pid, ppid, start time, MB,
+  command line) and `kit kill <pid>... [--tree]`. kill refuses its own
   calling shell and its parents, and a pid that is already gone fails. PowerShell splits native arguments that contain
-  `"`. Put one argument per line in a file and run `eoie --args-from <file>`
+  `"`. Put one argument per line in a file and run `kit --args-from <file>`
   (or `-` for stdin).
 
 ## Offloading to the worker node
@@ -204,8 +204,8 @@ Long-lived node processes (the utilization monitor, any shared helper) carry an
 owner label in their log so a stale one can be traced and reclaimed. The utilization monitor (`node-watch.ps1`,
 label `node-watch`, a 24h job) publishes `node-status.txt` every ~75s; if that
 signal is stale by more than a few minutes its job timed out, and any lane revives
-it with `<eoie> job start node-watch 86400000 pwsh -NoProfile -File i574n.github/scripts/node-watch.ps1`
-(use the `%LOCALAPPDATA%\eoie\supervisor\eoie-*.exe` copy when the tree lease blocks the in-tree `eoie.exe`).
+it with `<kit> job start node-watch 86400000 pwsh -NoProfile -File i574n.github/scripts/node-watch.ps1`
+(use the `%LOCALAPPDATA%\kit\supervisor\kit-*.exe` copy when the tree lease blocks the in-tree `kit.exe`).
 
 Drive the node with direct `remote.ps1 <node> job start ...` calls — one
 supervised job per offload, per lane, concurrently. There is no central
@@ -217,7 +217,7 @@ lets lanes subscribe to node state and quorum in real time instead of polling a
 file.
 
 Gotcha: `remote.ps1 <node> job start --heavy ...` needs a spiral tree (it calls
-`scripts/heavy.ps1`, or honours `EOIE_HEAVY_GATE`); outside one it fails. Plain
+`scripts/heavy.ps1`, or honours `KIT_HEAVY_GATE`); outside one it fails. Plain
 `job start` (no `--heavy`) works anywhere.
 
 Gotcha: a `remote.ps1 <node> run "<cmd>"` whose `<cmd>` is more than ~2-3 KB fails
@@ -273,7 +273,7 @@ licenses, bundled or example skills, caches, templates, archives and trash.
 - Git belongs to the user: never stage, commit, push or branch unless asked;
   leave changes unstaged for review.
 - Time-boxed runs end at the stated local time; when the picks are done, take
-  the next backlog items without asking. Backlog: eoie `agile` at `<backlog>`.
+  the next backlog items without asking. Backlog: kit `agile` at `<backlog>`.
 - While long recompiles and suites run, advance lighter items in parallel; one
   memory-heavy job at a time (16 GB machine); retry jobs reaped for low memory
   at lower parallelism.
@@ -301,7 +301,7 @@ licenses, bundled or example skills, caches, templates, archives and trash.
 Canonical location: `i574n.github/docs/agents/agent-sync.md`. The `mold` scoop
 bucket is a clone of `i574n/mold` at `~/scoop/buckets/mold`; `fc1943s.github`
 is a workspace hub. A remote kit worker node (`DESKTOP-6E8C14G`, a LAN machine;
-"worker node" / "remote node" for short) runs as a remote eoie worker, driven
+"worker node" / "remote node" for short) runs as a remote kit worker (its binary is still C:\home\bin\eoie.exe with its own job store; the switch waits for an idle node, KIT-RENAME n60), driven
 with `i574n.github/scripts/remote.ps1 <node> run|job|status|sync|fetch` over SSH
 (Tailscale fallback); machines live in `~/.config/remote-machines.json`. Its
 bootstrap and the cross-machine job dispatch live in backlog `REMOTE-WORKER-NODE`
