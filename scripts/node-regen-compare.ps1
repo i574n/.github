@@ -1,12 +1,21 @@
 param(
     [Parameter(Mandatory)] [string] $Tree,
-    [string] $Dll = 'C:\home\remote-stage\spiral-bin-1026-0819\net11.0\SpiralCompiler.dll',
+    [string] $Dll = '',
+    [string] $GitRoot = 'C:\home\git',
     [int] $Throttle = 4
 )
 $ErrorActionPreference = 'Continue'
 $dotnet = Join-Path $env:LOCALAPPDATA 'spiral-bin\toolchains\dotnet\dotnet.exe'
 $env:SPIRAL_COMPILER_PACKAGE_DIR = 'C:\home\git\spiral\deps\The-Spiral-Language\VS Code Plugin'
-"dll $((Get-FileHash $Dll).Hash.Substring(0, 12)); dotnet $(Test-Path $dotnet)"
+if (-not $Dll) {
+    $envScript = @((Join-Path $GitRoot 'spiral/apps/compiler/scripts/env.ps1'), (Join-Path $GitRoot 'spiral/apps/compiler/tmp/scripts/env.ps1')) | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $envScript) { "regen compare VOID: no compiler env.ps1 under $GitRoot"; exit 2 }
+    . $envScript
+    $Dll = Get-SpiralCompilerDll (ConvertTo-SpiralMode 'single-flight') 'Release'
+}
+$coreDll = Join-Path (Split-Path $Dll) 'SpiralCompilerCore.dll'
+$core = if (Test-Path $coreDll) { (Get-FileHash $coreDll -Algorithm SHA256).Hash.Substring(0, 16) } else { 'MISSING' }
+"dll $((Get-FileHash $Dll).Hash.Substring(0, 12)) core $core at $Dll; dotnet $(Test-Path $dotnet)"
 if (Test-Path $Tree) { Remove-Item $Tree -Recurse -Force }
 Expand-Archive "$Tree.zip" $Tree
 $crates = @(Get-Content (Join-Path $Tree 'crates.txt') | Where-Object { $_ })
@@ -33,3 +42,6 @@ foreach ($crate in $crates) {
 }
 "candidate crates over 1000 lines: $(@($rows | Where-Object { $_.Side -eq 'cand' -and $_.Lines -gt 1000 }).Count)"
 "candidate compile failures: $(@($rows | Where-Object { $_.Side -eq 'cand' -and $_.Lines -lt 0 }).Count)"
+$missingArms = @(Get-ChildItem (Join-Path $Tree 'cand-out') -Filter *.rs -ErrorAction SilentlyContinue | Select-String -SimpleMatch 'compile_error!("backend_switch' -List)
+"candidate crates with a missing backend arm (compile_error!, fails at cargo check): $($missingArms.Count)"
+$missingArms | ForEach-Object { "  MISSING ARM: $($_.Filename)" }

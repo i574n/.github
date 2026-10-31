@@ -25,7 +25,7 @@
 
 := tool_pins () : list pin =
     [RustMain; DotnetWorkflow; Otp; Elixir; Gleam; Rebar3; Zig; Python]
-    |> listm.map (\ t => { tool = t; version = version_of t })
+    |> listm.map \ t => { tool = t; version = version_of t }
 
 :== action_pin = { name : string; ref : string }
 

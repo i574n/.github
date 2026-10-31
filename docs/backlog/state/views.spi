@@ -2,3 +2,4 @@ union agile_view =
     | View :: string * string * string -> agile_view
 inl view_subagent_main () = View ("subagent-main", "next", "--as subagent --team main")
 inl view_x_light () = View ("x-light", "next", "--team x --ready --load light")
+inl view_wipe_redo () = View ("wipe-redo", "list", "all --tag wipe-redo")

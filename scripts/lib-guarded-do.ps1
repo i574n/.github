@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $env:KIT_LEASE_POLICY = 'renewing'
 $kit = Join-Path 'C:\home\git' ('k' + 'it\kit.exe')
-$libPattern = [regex]::Escape($Lib) + '|spiral[\\/]lib|spiral\.notebook|lib_gate\.ps1|gate\.ps1|land\.ps1'
+$libPattern = [regex]::Escape($Lib) + '|spiral[\\/]lib|spiral\.notebook|lib_gate\.ps1|[\\/]gate\.ps1|[\\/]land\.ps1'
 
 function Test-ExemptAncestry($process, $byId) {
     if (-not $ExemptAncestry) { return $false }
@@ -18,6 +18,43 @@ function Test-ExemptAncestry($process, $byId) {
         $current = $byId[[int]$current.ParentProcessId]
     }
     $false
+}
+
+$livePathPattern = [regex]::Escape($Lib) + '|spiral[\\/]lib'
+$tempPathPattern = '"?[^\s"]*\\AppData\\Local\\Temp\\[^\s"]*"?'
+
+function Test-RealCopy([string] $LibPath) {
+    $dir = $LibPath
+    while ($dir -and $dir -match '\\AppData\\Local\\Temp\\') {
+        $item = Get-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue
+        if ($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { return $false }
+        $dir = Split-Path $dir -Parent
+    }
+    $true
+}
+
+function Test-CopyDaemon([string] $Command) {
+    if ($Command -notmatch 'CompilerDaemon\.serve_app') { return $false }
+    if ($Command -notmatch '-pa "?([A-Za-z]:[\\/][^"]*?)[\\/]mix-build-lib-gate[\\/]lib[\\/]') { return $false }
+    $root = $Matches[1].Replace('/', '\')
+    if ($root -notmatch '\\AppData\\Local\\Temp\\') { return $false }
+    $lib = Join-Path $root 'lib\spiral'
+    (Test-Path -LiteralPath $lib -PathType Container) -and (Test-RealCopy $lib)
+}
+
+function Test-CopyOnlyAncestry($process, $byId) {
+    $copy = $false
+    $current = $process
+    for ($depth = 0; $current -and $depth -lt 12; $depth++) {
+        $command = "$($current.CommandLine)"
+        if (($command -replace $tempPathPattern, '') -match $livePathPattern) { return $false }
+        foreach ($m in [regex]::Matches($command, '[A-Za-z]:\\[^\s"]*\\AppData\\Local\\Temp\\[^\s"]*?lib\\spiral')) {
+            if (-not (Test-RealCopy $m.Value)) { return $false }
+            $copy = $true
+        }
+        $current = $byId[[int]$current.ParentProcessId]
+    }
+    $copy
 }
 
 function Get-LibReaders {
@@ -38,8 +75,12 @@ function Get-LibReaders {
             if ($process.Name -match '^(erl|beam\.smp|beam|pwsh|dotnet|powershell)\.exe$') { "lib-guarded-do / exempt by ancestry: $($process.ProcessId) $($process.Name)" | Out-Host }
             continue
         }
-        if ($process.Name -match '^(erl|beam\.smp|beam)\.exe$') { $readers.Add("process: $($process.ProcessId) $($process.Name)") }
+        if ($process.Name -match '^(erl|beam\.smp|beam)\.exe$') {
+            if ((Test-CopyDaemon $command) -or (Test-CopyOnlyAncestry $process $byId)) { "lib-guarded-do / skipped, reads a lib copy under TEMP: $($process.ProcessId) $($process.Name)" | Out-Host; continue }
+            $readers.Add("process: $($process.ProcessId) $($process.Name)")
+        }
         elseif ($process.Name -match '^(pwsh|dotnet|powershell)\.exe$' -and $command -match $libPattern -and $command -notmatch 'lib-guarded-do\.ps1') {
+            if (Test-CopyOnlyAncestry $process $byId) { "lib-guarded-do / skipped, reads a lib copy under TEMP: $($process.ProcessId) $($process.Name)" | Out-Host; continue }
             $readers.Add("process: $($process.ProcessId) $($process.Name) $($command.Substring(0, [Math]::Min(120, $command.Length)))")
         }
     }
@@ -48,7 +89,11 @@ function Get-LibReaders {
 
 $text = Get-Content -Raw -LiteralPath $Program
 $applyText = [regex]::Replace($text, '(?m)^(\s*edit\s+\S+)\s+dry-run\b', '$1')
-$dryText = [regex]::Replace($applyText, '(?m)^(\s*edit\s+\S+)', '$1 dry-run')
+$writeBlock = '(?ms)^\s*write\s+(\S+)\s*<<<\s*$.*?^>>>\s*$\r?\n?'
+$writeTargets = @([regex]::Matches($applyText, $writeBlock) | ForEach-Object { $_.Groups[1].Value })
+$existing = @($writeTargets | Where-Object { Test-Path -LiteralPath (Join-Path $Lib $_) })
+if ($existing.Count) { "lib-guarded-do / refused: the program writes files that already exist: $($existing -join ', ')"; exit 4 }
+$dryText = [regex]::Replace([regex]::Replace($applyText, $writeBlock, ''), '(?m)^(\s*edit\s+\S+)', '$1 dry-run')
 $before = Get-LibReaders
 if ($before.Count) { "lib-guarded-do / refused: $($before.Count) live lib readers"; $before | ForEach-Object { "  $_" }; exit 3 }
 $dry = @($dryText | & $kit do $Lib - 2>&1 | ForEach-Object { "$_" })

@@ -26,7 +26,7 @@ foreach ($rel in $files) {
         Copy-Item -LiteralPath (Join-Path $Root $rel) $to
     }
 }
-. 'C:\home\git\spiral\apps\compiler\tmp\scripts\env.ps1'
+. (@('C:\home\git\spiral\apps\compiler\scripts\env.ps1', 'C:\home\git\spiral\apps\compiler\tmp\scripts\env.ps1') | Where-Object { Test-Path $_ } | Select-Object -First 1)
 $dotnet = Resolve-SpiralDotnet
 $candidate = if ($Compiler) { $Compiler } else { Get-ChildItem (Join-Path $env:LOCALAPPDATA 'spiral-bin\candidates\pack-spelling\bin\single-flight') -Recurse -Filter SpiralCompiler.dll | Where-Object FullName -match '\\Debug\\' | Select-Object -First 1 -ExpandProperty FullName }
 $installed = Join-Path $env:LOCALAPPDATA 'spiral-bin\bin\single-flight\SpiralCompiler\Release\net11.0\SpiralCompiler.dll'
@@ -61,7 +61,7 @@ $formatterChanged | Select-Object -First 5 | ForEach-Object { "  formatter: $_" 
 $green = -not $errors.Count -and -not $notBack.Count
 if (-not $green) { "$Name RED: nothing applied"; exit 1 }
 if ($formatterChanged.Count) { "${Name}: the installed formatter normalizes $($formatterChanged.Count) files on top; the land applies the formatted text" }
-if (-not $Apply) { "$Name GREEN on copies; pass -Apply to write the $($changed.Count + $formatterChanged.Count) changed files into $Root (originals stay in $original)"; exit 0 }
 $touched = @($changed + $formatterChanged | Sort-Object -Unique)
+if (-not $Apply) { "$Name GREEN on copies; pass -Apply to write the $($touched.Count) changed files into $Root (originals stay in $original)"; exit 0 }
 foreach ($rel in $touched) { Copy-Item -LiteralPath (Join-Path $symbols $rel) (Join-Path $Root $rel) -Force }
 "$Name applied: $($touched.Count) files in $Root; restore with robocopy $original $Root /E"

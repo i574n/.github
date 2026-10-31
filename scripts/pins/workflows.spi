@@ -299,10 +299,8 @@
             { repo = "spiral"; path = "spiral/rust-toolchain.toml"; rendered = rust_toolchain [] }
             { repo = "tibia"; path = "tibia/rust-toolchain.toml"; rendered = tibia_rust_toolchain () }
             { repo = "x"; path = "x/rust-toolchain.toml"; rendered = rust_toolchain [] }
-        ]
-    := pending =
-        [
             workflow_target "kit" "gh-pages.yml" (kit ())
             { repo = "kit"; path = "kit/.editorconfig"; rendered = editorconfig () }
         ]
+    := pending = []
     check_targets "workflows" targets pending

@@ -10,6 +10,8 @@ param(
     [string] $Pattern = '^x verify /|^x e2e / (FAILED|\d+ requests|accepted)|DIFFERENT|^Result: |OVER \d+|GLEAM-FAILED|RUST-FAILED|^spiral-tests total|"failed":[1-9]|^XSIM .*result=fail|notebook \S+ FAILED|notebooks (failed|passed)',
     [int] $ErrorLines = 12,
     [string[]] $LandRepos = @(),
+    [string[]] $Push = @(),
+    [string] $RequireCore,
     [switch] $WriteManifest,
     [string] $Land,
     [string] $From,
@@ -17,6 +19,9 @@ param(
     [switch] $Apply
 )
 $ErrorActionPreference = 'Stop'
+$Repos = @($Repos -split ',' | Where-Object { $_ })
+$LandRepos = @($LandRepos -split ',' | Where-Object { $_ })
+$Push = @($Push -split ',' | Where-Object { $_ })
 $remote = Join-Path $PSScriptRoot 'remote.ps1'
 $gitRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 function Get-ManifestPath([string] $Name) { Join-Path $env:LOCALAPPDATA "node-proof\$Name.json" }
@@ -104,7 +109,7 @@ $mirrorRoot = "C:\home\remote\$MirrorName"
 $stage = "C:\home\remote-stage\$MirrorName"
 $jobScript = Join-Path ([IO.Path]::GetTempPath()) "node-proof-$MirrorName.ps1"
 $pin = $CompilerDll ? "`$env:SPIRAL_COMPILER_DLL = '$CompilerDll'`n" : ''
-$body = "`$ErrorActionPreference = 'Continue'`n$pin`$env:PATH = `"`$HOME\scoop\apps\erlang\current\bin;`$HOME\scoop\apps\elixir\current\bin;`$env:PATH`"`n$($Command.Replace('{mirror}', $mirrorRoot))`nexit `$LASTEXITCODE`n"
+$body = "`$ErrorActionPreference = 'Continue'`n$pin`$env:PATH = `"`$HOME\scoop\apps\erlang\current\bin;`$HOME\scoop\apps\elixir\current\bin;`$env:PATH`"`n$($Command.Replace('{mirror}', $mirrorRoot).Replace('{stage}', $stage))`nexit `$LASTEXITCODE`n"
 [IO.File]::WriteAllText($jobScript, $body)
 $tokens = $null; $errors = $null
 [System.Management.Automation.Language.Parser]::ParseFile($jobScript, [ref]$tokens, [ref]$errors) | Out-Null
@@ -115,6 +120,15 @@ if ($LASTEXITCODE) { throw "node-proof / scp of the job script failed" }
 $want = (Get-FileHash $jobScript).Hash.Substring(0, 12)
 $have = pwsh -NoProfile -File $remote node run "(Get-FileHash '$stage\run.ps1').Hash.Substring(0, 12)" 2>&1 | Select-Object -Last 1
 if ("$have" -ne $want) { throw "node-proof / staged job script hash $have, expected $want" }
+foreach ($file in $Push) {
+    $leaf = Split-Path $file -Leaf
+    scp -q -o "HostName=$address" $file "${alias}:$($stage.Replace('\', '/'))/$leaf"
+    if ($LASTEXITCODE) { throw "node-proof / scp of $file failed" }
+    $want = (Get-FileHash $file).Hash.Substring(0, 12)
+    $have = pwsh -NoProfile -File $remote node run "(Get-FileHash '$stage\$leaf').Hash.Substring(0, 12)" 2>&1 | Select-Object -Last 1
+    if ("$have" -ne $want) { throw "node-proof / pushed $leaf hash $have, expected $want" }
+    "node-proof / pushed $leaf to $stage ($want)"
+}
 foreach ($repo in $Repos) {
     $sync = @(pwsh -NoProfile -File $remote node sync $repo -Mirror $MirrorName 2>&1 | ForEach-Object { "$_" })
     $ok = @($sync -match "^REMOTE-SYNC-OK $repo ")
@@ -122,4 +136,5 @@ foreach ($repo in $Repos) {
     $ok[0]
 }
 if ($LandRepos) { Write-SyncManifest $Label $LandRepos }
-pwsh -NoProfile -File $remote node job start $Label $TimeoutMs pwsh -NoProfile -File "$stage\run.ps1" 2>&1 | Select-Object -Last 1
+$coreCheck = $RequireCore ? @('-RequireCore', $RequireCore) : @()
+pwsh -NoProfile -File $remote node job @coreCheck start $Label $TimeoutMs pwsh -NoProfile -File "$stage\run.ps1" 2>&1 | Select-Object -Last 1

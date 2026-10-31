@@ -10,6 +10,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
 function Get-Sha256([byte[]] $bytes) { [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)) }
+function Get-FileStamp([IO.FileInfo] $info) { "$($info.Length)|$($info.LastWriteTimeUtc.Ticks)" }
 function Get-OwnEntries([string] $folder) {
     $files = [Collections.Generic.List[string]]::new()
     $links = [Collections.Generic.List[IO.FileSystemInfo]]::new()
@@ -53,7 +54,14 @@ if ($Restore) {
     } finally { $blobs.Dispose() }
     exit 0
 }
+. (Join-Path $PSScriptRoot 'safe-delete.ps1')
+$Root = Assert-SafeDeleteRoot $Root
 $names = @(if ($ListFile) { [IO.File]::ReadAllLines($ListFile) | Where-Object { $_ } } else { [IO.Directory]::GetDirectories($Root) | ForEach-Object { Split-Path $_ -Leaf } })
+if ($Only) {
+    $names = @($names | Where-Object { $_ -like $Only })
+    if (-not $names) { throw "-Only '$Only' matches no folder under $Root; nothing archived" }
+}
+foreach ($name in $names) { $null = Assert-SafeDeleteRoot (Join-Path $Root $name) -Under $Root }
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $run = Join-Path $Store $stamp
 New-Item -ItemType Directory -Force $run | Out-Null
@@ -64,6 +72,7 @@ $seen = [Collections.Generic.HashSet[string]]::new()
 $files = 0; $bytes = [int64]0; $unique = [int64]0; $skipped = [Collections.Generic.List[string]]::new()
 $linkRows = [Collections.Generic.List[string]]::new()
 $ownLinks = @{}
+$archivedStamps = @{}
 try {
     foreach ($name in $names) {
         $folder = Join-Path $Root $name
@@ -75,14 +84,16 @@ try {
             $linkRows.Add("$($link.FullName.Substring($Root.Length + 1))`t$kind`t$($link.LinkTarget)")
         }
         foreach ($path in $own.Files) {
+            $info = [IO.FileInfo]::new($path)
             try { $content = [IO.File]::ReadAllBytes($path) } catch { $skipped.Add("$path (unreadable)"); continue }
+            if ($content.Length -ne $info.Length) { $skipped.Add("$path (changed while reading)"); continue }
+            $archivedStamps[$path] = Get-FileStamp $info
             $hash = Get-Sha256 $content
             if ($seen.Add($hash)) {
                 $entry = $zip.CreateEntry($hash, [IO.Compression.CompressionLevel]::Optimal)
                 $stream = $entry.Open(); try { $stream.Write($content, 0, $content.Length) } finally { $stream.Dispose() }
                 $unique += $content.Length
             }
-            $info = [IO.FileInfo]::new($path)
             $manifest.WriteLine("$($path.Substring($Root.Length + 1))`t$hash`t$($content.Length)`t$($info.LastWriteTimeUtc.ToString('o'))")
             $files++; $bytes += $content.Length
         }
@@ -108,8 +119,10 @@ if ($bad -or $skipped.Count) { 'originals kept: verify failed or files were skip
 if (-not $Apply) { 'dry: originals kept; rerun with -Apply to remove them after the same verify'; exit 0 }
 $removed = 0
 foreach ($name in $names) {
-    $folder = Join-Path $Root $name
+    $folder = Assert-SafeDeleteRoot (Join-Path $Root $name) -Under $Root
     if (-not (Test-Path -LiteralPath $folder)) { continue }
+    $changed = @((Get-OwnEntries $folder).Files | Where-Object { $archivedStamps[$_] -ne (Get-FileStamp ([IO.FileInfo]::new($_))) })
+    if ($changed.Count) { throw "files under $folder changed or appeared after the archive; nothing more removed: $(($changed | Select-Object -First 5) -join ', ')" }
     foreach ($link in $ownLinks[$name]) { $link.Delete() }
     $left = @(Get-OwnEntries $folder).Links
     if ($left.Count) { throw "links appeared under $folder after the archive; nothing more removed: $(($left | ForEach-Object FullName) -join ', ')" }

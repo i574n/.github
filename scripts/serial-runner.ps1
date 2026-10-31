@@ -1,7 +1,7 @@
 param([Parameter(Mandatory)] [string] $Manifest)
 $ErrorActionPreference = 'Continue'
 $steps = @(Get-Content $Manifest -Raw | ConvertFrom-Json)
-. 'C:\home\git\spiral\apps\compiler\tmp\scripts\heavy.ps1'
+. (@('C:\home\git\spiral\apps\compiler\scripts\heavy.ps1', 'C:\home\git\spiral\apps\compiler\tmp\scripts\heavy.ps1') | Where-Object { Test-Path $_ } | Select-Object -First 1)
 . (Join-Path $PSScriptRoot 'live-wait.ps1')
 $log = [IO.Path]::ChangeExtension($Manifest, '.log')
 $failed = [System.Collections.Generic.List[string]]::new()
