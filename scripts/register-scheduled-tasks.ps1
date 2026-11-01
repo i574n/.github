@@ -5,6 +5,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $scripts = $PSScriptRoot
+# Project-specific task scripts live in their own repo (ORG-SCRIPTS-HOME), not here; the task path points there.
+$tibiaScripts = Join-Path (Split-Path (Split-Path $PSScriptRoot)) 'tibia\scripts'
 $tasks = @(
     @{
         Name = 'kit-unstaged-backup'
@@ -34,7 +36,7 @@ $tasks = @(
         Name = 'tibia-mariadb-dump'
         At = '05:20'
         Description = 'RESILIENCE: daily consistent (--single-transaction) logical dump of the canary DB to %LOCALAPPDATA%\tibia-mariadb-dumps (mirrored); a live-datadir file copy is not a consistent restore point'
-        Arguments = "--headless `"$Pwsh`" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$(Join-Path $scripts 'tibia-mariadb-dump.ps1')`""
+        Arguments = "--headless `"$Pwsh`" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$(Join-Path $tibiaScripts 'tibia-mariadb-dump.ps1')`""
     }
     @{
         Name = 'config-baseline-check'

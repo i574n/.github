@@ -15,7 +15,7 @@ foreach ($line in [IO.File]::ReadLines("$root\state\agile.spi")) {
 $userRx = [regex]'(?i)\b(user''?s? (call|decision|decide|push|review|approval|answer|choice|yes|go|order|input)|ask(ed)? the user|needs? the user|waits? (on|for) the user|user to (decide|choose|confirm|push|approve|review)|on the user''s yes|the user decides|pending user|user-only|blocked on (the )?user)'
 $waitRx = [regex]'(?i)\b(waits? (on|for)|blocked (on|by)|held (for|until|on)|until (the|a|after)|after the user|parked|on hold|deferred)\b'
 $resumeRx = [regex]'(?i)\b(resume (when|on|after|once|if|by)|until\b|unpause|re-?open (when|on)|wakes? (when|on))'
-$ruleRx = [regex]'(?i)paused by rule|WIP rule|Resume when picked|no note since'
+$ruleRx = [regex]'(?i)paused by rule|WIP rule|Resume when picked|no note since|nothing queued|Paused\. Last note'
 $now = [DateTime]::UtcNow
 $rows = foreach ($t in $tasks | Where-Object status -ne 'Done') {
     $ln = $latest[$t.id]
