@@ -5,9 +5,9 @@ $root = 'C:\home\git\i574n.github\docs\backlog'
 $tasks = (& $k agile list $root all --json 2>$null | Out-String | ConvertFrom-Json).tasks
 $byId = @{}; $tasks | ForEach-Object { $byId[$_.id] = $_ }
 $latest = @{}
-$rx = [regex]'^inl note_of_\w+ \(\) = Note \("(?<id>[^"]+)", (?<n>\d+)u32, "(?<at>[^"]+)", "(?<who>[^"]*)", "(?<text>.*)"\)\s*$'
+$rx = [regex]'^(?:inl|:=) note_of_\w+ \(\) = Note \("(?<id>[^"]+)", (?<n>\d+)u32, "(?<at>[^"]+)", "(?<who>[^"]*)", "(?<text>.*)"\)\s*$'
 foreach ($line in [IO.File]::ReadLines("$root\state\agile.spi")) {
-    if (-not $line.StartsWith('inl note_of_')) { continue }
+    if (-not ($line.StartsWith('inl note_of_') -or $line.StartsWith(':= note_of_'))) { continue }
     $m = $rx.Match($line); if (-not $m.Success) { continue }
     $id = $m.Groups['id'].Value; $n = [int]$m.Groups['n'].Value
     if (-not $latest.ContainsKey($id) -or $latest[$id].N -lt $n) { $latest[$id] = [pscustomobject]@{ N = $n; At = $m.Groups['at'].Value; Who = $m.Groups['who'].Value; Text = $m.Groups['text'].Value -replace '\\n', ' ' } }
