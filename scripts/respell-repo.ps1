@@ -26,7 +26,7 @@ foreach ($rel in $files) {
         Copy-Item -LiteralPath (Join-Path $Root $rel) $to
     }
 }
-. (@('C:\home\git\spiral\apps\compiler\scripts\env.ps1', 'C:\home\git\spiral\apps\compiler\tmp\scripts\env.ps1') | Where-Object { Test-Path $_ } | Select-Object -First 1)
+. (Join-Path $PSScriptRoot '..\..\spiral\apps\compiler\scripts\env.ps1')
 $dotnet = Resolve-SpiralDotnet
 $candidate = if ($Compiler) { $Compiler } else { Get-ChildItem (Join-Path $env:LOCALAPPDATA 'spiral-bin\candidates\pack-spelling\bin\single-flight') -Recurse -Filter SpiralCompiler.dll | Where-Object FullName -match '\\Debug\\' | Select-Object -First 1 -ExpandProperty FullName }
 $installed = Join-Path $env:LOCALAPPDATA 'spiral-bin\bin\single-flight\SpiralCompiler\Release\net11.0\SpiralCompiler.dll'

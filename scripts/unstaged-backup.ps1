@@ -1,5 +1,5 @@
 param(
-    [string] $Root = 'C:\home\git',
+    [string] $Root = (Join-Path $PSScriptRoot '..\..'),
     [string] $Store = (Join-Path $env:LOCALAPPDATA 'kit\backups\unstaged'),
     [int] $KeepDays = 14,
     [int] $MaxFileMB = 20,

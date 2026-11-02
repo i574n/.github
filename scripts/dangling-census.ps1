@@ -1,7 +1,7 @@
 param([int] $StaleDays = 3, [string] $Out = '')
 $ErrorActionPreference = 'Stop'
 $k = "$env:LOCALAPPDATA\kit\bin\kit.exe"
-$root = 'C:\home\git\i574n.github\docs\backlog'
+$root = (Join-Path $PSScriptRoot '..\docs\backlog')
 $tasks = (& $k agile list $root all --json 2>$null | Out-String | ConvertFrom-Json).tasks
 $byId = @{}; $tasks | ForEach-Object { $byId[$_.id] = $_ }
 $latest = @{}

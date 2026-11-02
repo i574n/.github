@@ -1,13 +1,13 @@
 param(
     [Parameter(Mandatory)] [string] $Program,
-    [string] $Lib = 'C:\home\git\spiral\lib\spiral',
+    [string] $Lib = (Join-Path $PSScriptRoot '..\..\spiral\lib\spiral'),
     [switch] $DryRun,
     [string] $ExemptAncestry = '',
     [string[]] $ExemptWindow = @()
 )
 $ErrorActionPreference = 'Stop'
 $env:KIT_LEASE_POLICY = 'renewing'
-$kit = Join-Path 'C:\home\git' ('k' + 'it\kit.exe')
+$kit = Join-Path (Join-Path $PSScriptRoot '..\..') ('k' + 'it\kit.exe')
 $libPattern = [regex]::Escape($Lib) + '|spiral[\\/]lib|spiral\.notebook|lib_gate\.ps1|[\\/]gate\.ps1|[\\/]land\.ps1'
 
 function Test-ExemptAncestry($process, $byId) {

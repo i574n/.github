@@ -1,7 +1,7 @@
 param(
     [string] $Program = '',
     [string] $Note = '',
-    [string] $Backlog = 'C:\home\git\i574n.github\docs\backlog',
+    [string] $Backlog = (Join-Path $PSScriptRoot '..\docs\backlog'),
     [Parameter(Mandatory)] [string] $File,
     [Parameter(Mandatory)] [string] $Base,
     [Parameter(Mandatory)] [string] $Target,
@@ -14,7 +14,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $kit = Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe'
 if (-not (Test-Path -LiteralPath $kit)) { $kit = Get-ChildItem "$env:LOCALAPPDATA\kit\supervisor" -Filter kit-*.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1 -Expand FullName }
-$lib = 'C:\home\git\spiral\lib\spiral'
+$lib = (Join-Path $PSScriptRoot '..\..\spiral\lib\spiral')
 $live = Join-Path $lib $File
 function Get-Hash16([string] $Path) { (Get-FileHash -LiteralPath $Path).Hash.Substring(0, 16) }
 if (!$Program -eq !$Note) { throw 'land-lib-program: pass exactly one of -Program <file> or -Note <ITEM>/<n>' }
@@ -36,6 +36,7 @@ elseif ($have -ne $Base) { "land-lib-program / $File is $have, not the proven ba
 else {
     $guardArgs = @(if ($ExemptWindow) { '-ExemptWindow'; $ExemptWindow -join ',' }) + @(if ($ExemptAncestry) { '-ExemptAncestry'; $ExemptAncestry })
     New-Item -ItemType Directory -Force $undo | Out-Null
+    New-Item -ItemType Directory -Force (Split-Path (Join-Path $undo "$File.$have")) | Out-Null
     Copy-Item -LiteralPath $live (Join-Path $undo "$File.$have") -Force
     $out = @(pwsh -NoProfile -File (Join-Path $PSScriptRoot 'lib-guarded-do.ps1') -Program $Program @guardArgs 2>&1 | ForEach-Object { "$_" })
     $code = $LASTEXITCODE

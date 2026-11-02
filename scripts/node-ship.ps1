@@ -5,6 +5,10 @@ param(
     [string] $Label = (Get-Date -Format 'yyyyMMdd-HHmm')
 )
 $ErrorActionPreference = 'Stop'
+$nodeEnv = Join-Path $PSScriptRoot 'node-env.ps1'
+if (Test-Path $nodeEnv) { . $nodeEnv }
+$nodeAlias = $NodeRoutes[0]
+$nodeStageWin = $NodeStageDir -replace '/', '\'
 $remote = Join-Path $PSScriptRoot 'remote.ps1'
 $item = Get-Item -LiteralPath $LocalPath
 $isFolder = $item.PSIsContainer
@@ -16,16 +20,16 @@ $zipHash = (Get-FileHash $zip).Hash
 $localHashes = if ($isFolder) { Get-ChildItem $item.FullName -Recurse -File | Sort-Object FullName | ForEach-Object { '{0}={1}' -f $_.FullName.Substring($item.FullName.Length + 1), (Get-FileHash $_.FullName).Hash } } else { '{0}={1}' -f $item.Name, (Get-FileHash $item.FullName).Hash }
 $localDigest = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($localHashes -join "`n")))).Substring(0, 16)
 "payload {0} ({1}), digest {2}" -f $item.FullName, $(if ($isFolder) { 'folder' } else { 'file' }), $localDigest
-$stageZip = "C:/home/remote-stage/node-ship-$Label.zip"
-scp -q $zip "laptop:$stageZip"
+$stageZip = "$NodeStageDir/node-ship-$Label.zip"
+scp -q $zip "${nodeAlias}:$stageZip"
 if ($LASTEXITCODE) { throw "scp failed with exit $LASTEXITCODE" }
 Remove-Item $work -Recurse -Force
 
 $script = @"
 `$ErrorActionPreference = 'Stop'
-`$zip = 'C:\home\remote-stage\node-ship-$Label.zip'
+`$zip = '$nodeStageWin\node-ship-$Label.zip'
 if ((Get-FileHash `$zip).Hash -ne '$zipHash') { 'ABORT: zip hash differs after transfer'; return }
-`$staged = 'C:\home\remote-stage\node-ship-$Label'
+`$staged = '$nodeStageWin\node-ship-$Label'
 if (Test-Path `$staged) { Remove-Item `$staged -Recurse -Force }
 Expand-Archive `$zip `$staged
 `$isFolder = `$$isFolder
@@ -48,9 +52,9 @@ if (`$isFolder) { Copy-Item `$staged `$target -Recurse } else { Copy-Item `$stag
 "@
 $scriptFile = Join-Path ([IO.Path]::GetTempPath()) "node-ship-$Label.ps1"
 [IO.File]::WriteAllText($scriptFile, $script)
-scp -q $scriptFile "laptop:C:/home/remote-stage/node-ship-$Label.ps1"
+scp -q $scriptFile "${nodeAlias}:$NodeStageDir/node-ship-$Label.ps1"
 if ($LASTEXITCODE) { throw "scp of the ship script failed with exit $LASTEXITCODE" }
 Remove-Item $scriptFile
-$out = pwsh -NoProfile -File $remote node run "& 'C:\home\remote-stage\node-ship-$Label.ps1'" 2>&1 | Out-String
+$out = pwsh -NoProfile -File $remote node run "& '$nodeStageWin\node-ship-$Label.ps1'" 2>&1 | Out-String
 $out.TrimEnd()
 if ($out -notmatch 'SHIPPED') { exit 1 }

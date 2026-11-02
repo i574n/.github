@@ -1,9 +1,12 @@
 param(
-    [string] $ArchiveRoot = 'C:\home\remote-archive',
+    [string] $ArchiveRoot,
     [string] $Match = '^20261029-',
     [switch] $Apply
 )
 $ErrorActionPreference = 'Stop'
+$nodeEnv = Join-Path $PSScriptRoot 'node-env.ps1'
+if (Test-Path $nodeEnv) { . $nodeEnv }
+if (-not $ArchiveRoot) { $ArchiveRoot = $NodeArchiveDir }
 $buildNames = '^(_build|target|node_modules|\.cache|mix-build.*)$'
 $freeBefore = [math]::Round((Get-PSDrive C).Free / 1GB, 2)
 $archives = @(Get-ChildItem $ArchiveRoot -Directory | Where-Object Name -match $Match)
@@ -32,5 +35,5 @@ foreach ($r in $rows | Where-Object Safe) {
 }
 $after = @($links | ForEach-Object { Test-Path -LiteralPath $_.Target })
 "removed $removed build dirs; link targets still existing: $(@($after | Where-Object { $_ }).Count) of $($links.Count); C: free $freeBefore -> $([math]::Round((Get-PSDrive C).Free / 1GB, 2)) GB; manifest $manifest"
-if (-not (Test-Path 'C:\home\git\spiral\deps')) { throw 'C:\home\git\spiral\deps is MISSING after cleanup' }
+if (-not (Test-Path (Join-Path $PSScriptRoot '..\..\spiral\deps'))) { throw 'spiral deps is MISSING after cleanup' }
 'deps checkout intact: True'

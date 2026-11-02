@@ -29,7 +29,7 @@ Set-Location (New-Item -ItemType Directory -Path "../.." -Force)
 if (!(Test-Path polyglot/.git)) { git clone --recurse-submodules https://$domain/$owner/polyglot.git }
 Set-Location $ScriptDir
 
-. ../../polyglot/scripts/core.ps1
+. ../../spiral/scripts/core.ps1
 
 Set-Location (New-Item -ItemType Directory -Path "../.." -Force)
 git clone --recurse-submodules https://$domain/$owner/dice.git

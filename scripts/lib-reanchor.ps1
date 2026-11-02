@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory)] [string] $Draft,
     [Parameter(Mandatory)] [string] $Out,
     [Parameter(Mandatory)] [string] $Program,
-    [string] $Lib = 'C:\home\git\spiral\lib\spiral',
+    [string] $Lib = (Join-Path $PSScriptRoot '..\..\spiral\lib\spiral'),
     [switch] $DropAddedNameHeadings
 )
 $ErrorActionPreference = 'Stop'

@@ -1,5 +1,5 @@
 function Get-LiveBlock {
-    $cli = 'C:\home\git\kit\kit.exe'
+    $cli = (Join-Path $PSScriptRoot '..\..\kit\kit.exe')
     @(& $cli window list 2>&1 | Where-Object { "$_" -match '\blive-gui\b' }) | Select-Object -First 1
 }
 

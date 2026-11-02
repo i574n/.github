@@ -1,6 +1,6 @@
 param([Parameter(Mandatory)] [string] $Ids, [int] $MaxMinutes = 300)
 $env:KIT_LEASE_POLICY = 'renewing'
-$cli = 'C:\home\git\kit\kit.exe'
+$cli = (Join-Path $PSScriptRoot '..\..\kit\kit.exe')
 $watched = @($Ids -split ',' | Where-Object { $_ })
 $deadline = (Get-Date).AddMinutes($MaxMinutes)
 $done = @{}

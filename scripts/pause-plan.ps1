@@ -1,7 +1,7 @@
 param([string] $Owner = 'main', [switch] $Stop)
 $ErrorActionPreference = 'Stop'
 $jobsRoot = Join-Path $env:LOCALAPPDATA 'kit\jobs'
-$kit = 'C:\home\git\kit\kit.exe'
+$kit = (Join-Path $PSScriptRoot '..\..\kit\kit.exe')
 $planDir = Join-Path $env:TEMP 'pause-requeue'
 New-Item -ItemType Directory -Force $planDir | Out-Null
 $live = @(& $kit job list 2>&1 | ForEach-Object { [regex]::Match($_, 'id=(\S+) state=(running|queued)') } | Where-Object Success |

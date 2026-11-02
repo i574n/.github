@@ -1,17 +1,17 @@
 param(
     [string] $Kit = (Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe'),
-    [string] $Pwsh = 'C:\Users\i574n\scoop\apps\pwsh\current\pwsh.exe',
+    [string] $Pwsh = (Join-Path $PSHOME 'pwsh.exe'),
     [switch] $DryRun
 )
 $ErrorActionPreference = 'Stop'
 $scripts = $PSScriptRoot
-# Project-specific task scripts live in their own repo (ORG-SCRIPTS-HOME), not here; the task path points there.
+
 $tibiaScripts = Join-Path (Split-Path (Split-Path $PSScriptRoot)) 'tibia\scripts'
 $tasks = @(
     @{
         Name = 'kit-unstaged-backup'
         At = '03:10'
-        Description = "KIT-SCRATCH-WATCH M2: daily verified backup of every C:\home\git repo's staged, unstaged and untracked layer to %LOCALAPPDATA%\kit\backups\unstaged (never deletes)"
+        Description = "KIT-SCRATCH-WATCH M2: daily verified backup of every tracked repo's staged, unstaged and untracked layer to %LOCALAPPDATA%\kit\backups\unstaged (never deletes)"
         Arguments = "--headless `"$Kit`" job start kit-unstaged-backup 1800000 `"$Pwsh`" -NoProfile -NonInteractive -File $(Join-Path $scripts 'unstaged-backup.ps1') -Verify"
     }
     @{

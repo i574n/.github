@@ -3,7 +3,7 @@ param(
     [switch] $Apply
 )
 $ErrorActionPreference = 'Stop'
-$reposRoot = 'C:\home\git'
+$reposRoot = (Join-Path $PSScriptRoot '..\..\..')
 
 $pathRules = @(
     @{ Old = 'deps/polyglot/deps/spiral/'; New = 'deps/spiral/' }

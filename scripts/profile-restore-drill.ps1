@@ -1,7 +1,6 @@
 param(
-    [string[]] $Routes = @('laptop', 'laptop-ts', 'laptop-ip'),
-    [string] $RemoteDir = 'C:/home/profile-mirror',
-    [string] $NodePython = 'C:\Users\alias\scoop\apps\python312\current\python.exe',
+    [string[]] $Routes,
+    [string] $RemoteDir,
     [string] $MemoryDir = (Join-Path $env:USERPROFILE '.claude\projects\C--home-git\memory'),
     [string] $MemberFilter = 'projects/C--home-git/memory/',
     [int] $MinEntries = 1000,
@@ -9,21 +8,43 @@ param(
     [switch] $NoteOnFailure
 )
 $ErrorActionPreference = 'Stop'
+$nodeEnv = Join-Path $PSScriptRoot 'node-env.ps1'
+if (Test-Path $nodeEnv) { . $nodeEnv }
+if (-not $Routes) { $Routes = $NodeRoutes }
+if (-not $RemoteDir) { $RemoteDir = $NodeMirrorDir }
 $log = Join-Path $env:LOCALAPPDATA 'kit\schedules\profile-restore-drill.last.log'
 New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
-$nodeScript = Join-Path $PSScriptRoot 'profile-restore-drill-node.py'
+$nodeScript = Join-Path $PSScriptRoot 'profile-restore-drill-node.ps1'
+function Invoke-Bounded([string] $exe, [string[]] $a, [int] $timeoutMs, [string] $outFile) {
+    $errf = [IO.Path]::GetTempFileName()
+    $p = if ($outFile) { Start-Process $exe -ArgumentList $a -NoNewWindow -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errf }
+    else { Start-Process $exe -ArgumentList $a -NoNewWindow -PassThru -RedirectStandardError $errf }
+    if (-not $p.WaitForExit($timeoutMs)) {
+        Get-CimInstance Win32_Process -Filter "ParentProcessId=$($p.Id)" -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+        Remove-Item $errf -Force -ErrorAction SilentlyContinue
+        return 124
+    }
+    $code = $p.ExitCode
+    Remove-Item $errf -Force -ErrorAction SilentlyContinue
+    return $code
+}
+$sshOpts = @('-o', 'ConnectTimeout=8', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4')
 $reached = $null
 foreach ($route in $Routes) {
-    scp -q -o ConnectTimeout=8 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 $nodeScript "${route}:$RemoteDir/profile-restore-drill-node.py" 2>$null
-    if ($LASTEXITCODE -eq 0) { $reached = $route; break }
+    if ((Invoke-Bounded 'scp' (@('-q') + $sshOpts + @($nodeScript, "${route}:$RemoteDir/profile-restore-drill-node.ps1")) 30000 $null) -eq 0) { $reached = $route; break }
 }
 $failures = [Collections.Generic.List[string]]::new()
 $summary = ''
 if (-not $reached) {
     $failures.Add("no route reached the node ($($Routes -join ', '))")
 } else {
-    $raw = ssh -o ConnectTimeout=8 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 $reached "`"$NodePython`" -I $RemoteDir/profile-restore-drill-node.py $RemoteDir $MemberFilter" 2>&1
-    $result = try { ($raw | Select-Object -Last 1) | ConvertFrom-Json } catch { [pscustomobject]@{ error = "unparsable node output: $(($raw | Select-Object -Last 2) -join ' ')" } }
+    $vout = [IO.Path]::GetTempFileName()
+    $vrc = Invoke-Bounded 'ssh' ($sshOpts + @($reached, "pwsh -NoProfile -File $RemoteDir/profile-restore-drill-node.ps1 $RemoteDir $MemberFilter")) 180000 $vout
+    $raw = Get-Content -LiteralPath $vout -ErrorAction SilentlyContinue
+    Remove-Item $vout -Force -ErrorAction SilentlyContinue
+    $result = if ($vrc -ne 0) { [pscustomobject]@{ error = "node verify timed out/failed (rc $vrc); node likely saturated" } }
+    else { try { ($raw | Select-Object -Last 1) | ConvertFrom-Json } catch { [pscustomobject]@{ error = "unparsable node output: $(($raw | Select-Object -Last 2) -join ' ')" } } }
     if ($result.error) {
         $failures.Add("node: $($result.error)")
     } else {
@@ -52,7 +73,7 @@ $line
 if ($failures.Count) {
     if ($NoteOnFailure) {
         $kit = Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe'
-        & $kit story note 'C:\home\git\i574n.github\docs\backlog' PROFILE-RESTORE-DRILL "scheduled drill $line" --as profile-restore-drill *> $null
+        & $kit story note (Join-Path $PSScriptRoot '..\docs\backlog') PROFILE-RESTORE-DRILL "scheduled drill $line" --as profile-restore-drill *> $null
     }
     exit 1
 }

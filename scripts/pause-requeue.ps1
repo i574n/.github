@@ -1,7 +1,7 @@
 param([switch] $Apply)
 $ErrorActionPreference = 'Stop'
 $planDir = Join-Path $env:TEMP 'pause-requeue'
-$cli = @('C:\home\git\kit\kit.exe', 'C:\home\git\kit\kit.exe') | Where-Object { Test-Path $_ } | Select-Object -First 1
+$cli = (Join-Path $PSScriptRoot '..\..\kit\kit.exe')
 if ($Apply -and -not $cli) { throw "kit.exe not found at ${cli}: requeue waits for kit's 'rename finalized'" }
 $rows = @(Get-Content (Join-Path $planDir 'plan.json') -Raw | ConvertFrom-Json | Where-Object Safe | Sort-Object Id)
 $extrasPath = Join-Path $planDir 'extras.json'

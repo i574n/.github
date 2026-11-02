@@ -43,4 +43,4 @@ $added = @($envAfter.Keys | Where-Object { -not $snap.ContainsKey($_) })
 $removed = @($snap.Keys | Where-Object { -not $envAfter.Contains($_) })
 $changed = @($envAfter.Keys | Where-Object { $snap.ContainsKey($_) -and $snap[$_] -ne [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes("$($envAfter[$_])"))).Substring(0, 12) })
 "added: $($added -join ', ')  removed: $($removed -join ', ')  changed: $($changed -join ', ')"
-if ($removed.Count) { 'WARNING: an update REMOVED User env vars (the reinstall env_set trap): restore them from C:\home\data\rescue-2026-10-28\profile-snapshot-*' }
+if ($removed.Count) { 'WARNING: an update REMOVED User env vars (the reinstall env_set trap): restore them from the latest rescue profile snapshot' }

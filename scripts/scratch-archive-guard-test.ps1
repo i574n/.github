@@ -1,4 +1,4 @@
-$script = 'C:\home\git\i574n.github\scripts\scratch-archive.ps1'
+$script = (Join-Path $PSScriptRoot 'scratch-archive.ps1')
 $base = Join-Path $PSScriptRoot "sa-guard-$PID"
 $store = Join-Path $base 'store'
 $root = Join-Path $base 'root'

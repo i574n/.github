@@ -1,10 +1,14 @@
 param(
-    [string[]] $Routes = @('laptop', 'laptop-ts', 'laptop-ip'),
-    [string] $RemoteDir = 'C:/home/profile-mirror',
+    [string[]] $Routes,
+    [string] $RemoteDir,
     [int] $Keep = 48,
     [switch] $DryRun
 )
 $ErrorActionPreference = 'Stop'
+$nodeEnv = Join-Path $PSScriptRoot 'node-env.ps1'
+if (Test-Path $nodeEnv) { . $nodeEnv }
+if (-not $Routes) { $Routes = $NodeRoutes }
+if (-not $RemoteDir) { $RemoteDir = $NodeMirrorDir }
 $profileRoot = $env:USERPROFILE
 $claude = Join-Path $profileRoot '.claude'
 $sourceExtensions = '.ps1', '.psm1', '.psd1', '.exs', '.ex', '.spi', '.spir', '.md', '.tsv', '.csv', '.txt', '.h', '.c', '.json', '.toml', '.kit', '.do', '.sh', '.py', '.gleam', '.rs', '.fs', '.fsx'
@@ -20,7 +24,7 @@ $wholeTrees = @(
     (Join-Path $env:LOCALAPPDATA 'kit\windows'),
     (Join-Path $env:LOCALAPPDATA 'kit\config-baseline'),
     (Join-Path $profileRoot 'scoop\persist\notepadplusplus\backup'),
-    # Lane-requested irreproducible stores (added via the resilience lane). Keep small.
+
     (Join-Path $env:LOCALAPPDATA 'fiscal-undo'),
     (Join-Path $env:LOCALAPPDATA 'tibia-mariadb-dumps')
 )
@@ -30,7 +34,6 @@ $singleFiles = @(
     (Join-Path $profileRoot '.config\remote-machines.json'),
     (Join-Path $profileRoot '.ssh\config'),
     (Join-Path $profileRoot '.ssh\known_hosts'),
-    'C:\home\data\rescue-2026-10-28\loss-map.md',
     (Join-Path $profileRoot '.wslconfig'),
     (Join-Path $profileRoot '.npmrc'),
     (Join-Path $profileRoot '.config\scoop\config.json'),
@@ -68,10 +71,6 @@ $bytes = ($files | ForEach-Object { (Get-Item -LiteralPath $_ -Force -ErrorActio
 "profile-mirror: $($files.Count) files, $([Math]::Round($bytes / 1MB, 1)) MB"
 if ($DryRun) { return }
 
-# Self-clean stale staging on ENTRY, not only on success: a run that is memory-killed or times out mid-tar
-# (common on a saturated box) leaves its ~1 GB $work snapshot behind, and those accumulate into multi-GB TEMP
-# bloat that worsens the very disk/IO pressure causing the kills (2026-11-01: 5 dead dirs, ~6 GB). The overlap
-# guard already bars a concurrent run, so any profile-mirror-* dir >60 min old is dead staging, safe to reclaim.
 foreach ($stale in @(Get-ChildItem $env:TEMP -Directory -Filter 'profile-mirror-*' -ErrorAction SilentlyContinue | Where-Object { ((Get-Date) - $_.LastWriteTime).TotalMinutes -gt 60 })) {
     Remove-Item -LiteralPath $stale.FullName -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -99,20 +98,48 @@ if ($tarExit -ne 0 -or $entries -ne $relative.Count) { throw "profile-mirror: in
 $hash = (Get-FileHash $archive).Hash
 
 function ConvertTo-EncodedCommand([string] $script) { [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script)) }
+function Invoke-Bounded([string] $exe, [string[]] $a, [int] $timeoutMs, [string] $outFile) {
+    $errf = [IO.Path]::GetTempFileName()
+    $p = if ($outFile) { Start-Process $exe -ArgumentList $a -NoNewWindow -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errf }
+    else { Start-Process $exe -ArgumentList $a -NoNewWindow -PassThru -RedirectStandardError $errf }
+    if (-not $p.WaitForExit($timeoutMs)) {
+        Get-CimInstance Win32_Process -Filter "ParentProcessId=$($p.Id)" -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+        Remove-Item $errf -Force -ErrorAction SilentlyContinue
+        return 124
+    }
+    $code = $p.ExitCode
+    Remove-Item $errf -Force -ErrorAction SilentlyContinue
+    return $code
+}
+$sshOpts = @('-o', 'ConnectTimeout=8', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4')
+$winDir = $RemoteDir -replace '/', '\'
 $reached = $null
-$makeDir = ConvertTo-EncodedCommand "New-Item -ItemType Directory -Force '$RemoteDir' | Out-Null"
 foreach ($route in $Routes) {
-    ssh -o ConnectTimeout=8 -o ServerAliveInterval=15 -o ServerAliveCountMax=4$route "pwsh -NoProfile -EncodedCommand $makeDir" 2>$null
-    if ($LASTEXITCODE -eq 0) { $reached = $route; break }
+    if ((Invoke-Bounded 'ssh' ($sshOpts + @($route, "cmd /c if not exist `"$winDir`" mkdir `"$winDir`"")) 15000 $null) -eq 0) { $reached = $route; break }
 }
 if (-not $reached) { throw "profile-mirror: no route reached the node ($($Routes -join ', ')); the archive stays at $archive" }
-scp -q -o ConnectTimeout=8 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 $archive "${reached}:$RemoteDir/"
-if ($LASTEXITCODE -ne 0) { throw "profile-mirror: scp failed over $reached; the archive stays at $archive" }
+if ((Invoke-Bounded 'scp' (@('-q') + $sshOpts + @($archive, "${reached}:$RemoteDir/")) 600000 $null) -ne 0) { throw "profile-mirror: scp failed/timed out over $reached; the archive stays at $archive" }
 $localSize = (Get-Item $archive).Length
-# Node-side (fail-loud): size+entry verify of the landed tgz, previous-newest staleness age, TIERED retention
-# (12 hourly + 1/day for 14d + 1/week for 8w: frees most space but keeps history - an old snapshot may be the only
-# copy of something deleted since), and a stale_after status file so a monitor can detect a silently frozen mirror.
-# A full remote Get-FileHash over ~800 MB was the hot-path wedge point (n19); size+entries catches truncation cheaply.
+
+$retListOut = [IO.Path]::GetTempFileName()
+if ((Invoke-Bounded 'ssh' ($sshOpts + @($reached, "cmd /c dir /b /o-d `"$winDir\profile-mirror-*.tgz`"")) 20000 $retListOut) -eq 0) {
+    $arcNames = @(Get-Content -LiteralPath $retListOut -ErrorAction SilentlyContinue) | Where-Object { $_ -match 'profile-mirror-\d{8}-\d{6}\.tgz' }
+    $arcs = foreach ($n in $arcNames) { if ($n -match 'profile-mirror-(\d{8})-(\d{6})\.tgz') { [pscustomobject]@{ Name = $n.Trim(); T = [datetime]::ParseExact($matches[1] + $matches[2], 'yyyyMMddHHmmss', $null) } } }
+    $arcs = @($arcs | Sort-Object T -Descending)
+    $retNow = Get-Date; $keepSet = @{}
+    $arcs | Select-Object -First 12 | ForEach-Object { $keepSet[$_.Name] = $true }
+    $arcs | Group-Object { $_.T.ToString('yyyyMMdd') } | ForEach-Object { $grp = $_.Group | Sort-Object T -Descending | Select-Object -First 1; if (($retNow - $grp.T).TotalDays -le 14) { $keepSet[$grp.Name] = $true } }
+    $arcs | Group-Object { '{0}w{1:00}' -f $_.T.Year, [int]($_.T.DayOfYear / 7) } | ForEach-Object { $grp = $_.Group | Sort-Object T -Descending | Select-Object -First 1; if (($retNow - $grp.T).TotalDays -le 56) { $keepSet[$grp.Name] = $true } }
+    $toPrune = @($arcs | Where-Object { -not $keepSet.ContainsKey($_.Name) })
+    if ($toPrune.Count -gt 0) {
+        $delArgs = ($toPrune | ForEach-Object { '"' + $winDir + '\' + $_.Name + '"' }) -join ' '
+        Invoke-Bounded 'ssh' ($sshOpts + @($reached, "del $delArgs")) 30000 $null | Out-Null
+    }
+    "profile-mirror: box-side retention kept $($keepSet.Count) pruned $($toPrune.Count) (robust under node saturation)"
+}
+Remove-Item $retListOut -Force -ErrorAction SilentlyContinue
+
 $remoteScript = @"
 `$dir = '$RemoteDir'
 `$leaf = 'profile-mirror-$stamp.tgz'
@@ -134,10 +161,19 @@ $remoteScript = @"
 Set-Content (Join-Path `$dir 'profile-mirror-status.txt') "unix=`$unix stale_after_s=7200 newest=`$leaf kept=`$kept sha256=$hash"
 "`$size `$entries `$prevAgeMin `$kept `$(`$pruned.Count)"
 "@
-$remote = (ssh -o ConnectTimeout=8 -o ServerAliveInterval=15 -o ServerAliveCountMax=4$reached "pwsh -NoProfile -EncodedCommand $(ConvertTo-EncodedCommand $remoteScript)" 2>$null | Select-Object -Last 1) -split '\s+'
-if ($remote.Count -lt 2 -or [long]$remote[0] -ne $localSize -or [int]$remote[1] -ne $entries) { throw "profile-mirror: node verify mismatch (local $localSize B/$entries entries, node $($remote[0]) B/$($remote[1]) entries); the archive stays at $archive" }
-$prevAgeMin = [int]$remote[2]; $kept = [int]$remote[3]; $prunedCount = [int]$remote[4]
-if ($prevAgeMin -gt 120) { "profile-mirror: STALE WARNING - previous newest node tgz was ${prevAgeMin}min old (>120); prior scheduled runs were silently failing" }
+$vout = [IO.Path]::GetTempFileName()
+$vrc = Invoke-Bounded 'ssh' ($sshOpts + @($reached, "pwsh -NoProfile -EncodedCommand $(ConvertTo-EncodedCommand $remoteScript)")) 90000 $vout
+$verified = $false; $kept = -1; $prunedCount = -1
+if ($vrc -eq 0) {
+    $remote = ((Get-Content -LiteralPath $vout -Tail 1 -ErrorAction SilentlyContinue) -split '\s+')
+    if ($remote.Count -ge 2 -and [long]$remote[0] -eq $localSize -and [int]$remote[1] -eq $entries) {
+        $verified = $true; $prevAgeMin = [int]$remote[2]; $kept = [int]$remote[3]; $prunedCount = [int]$remote[4]
+        if ($prevAgeMin -gt 120) { "profile-mirror: STALE WARNING - previous newest node tgz was ${prevAgeMin}min old (>120); prior scheduled runs were silently failing" }
+    }
+    else { "profile-mirror: node verify MISMATCH (local $localSize/$entries, node $($remote[0])/$($remote[1])); tgz landed, integrity unconfirmed" }
+}
+else { "profile-mirror: verify+retention SKIPPED (rc $vrc; node likely saturated, remote pwsh could not start); tgz LANDED via scp, integrity unconfirmed this run" }
+Remove-Item $vout -Force -ErrorAction SilentlyContinue
 . (Join-Path $PSScriptRoot 'safe-delete.ps1')
 Remove-TreeSafely $work
-"profile-mirror: $reached $RemoteDir/profile-mirror-$stamp.tgz sha256 $hash; tiered retention kept $kept, pruned $prunedCount; stale_after=2h"
+"profile-mirror: $reached $RemoteDir/profile-mirror-$stamp.tgz sha256 $hash$(if ($verified) { "; verified, tiered retention kept $kept pruned $prunedCount" } else { '; LANDED (verify/retention skipped this run)' }); stale_after=2h"

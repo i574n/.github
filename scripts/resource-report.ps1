@@ -2,12 +2,16 @@ param(
     [int] $Hours = 24,
     [int] $Count = 2000,
     [switch] $Node,
-    [string] $NodeHost = 'laptop',
-    [string] $NodeKit = 'C:\home\bin\eoie.exe',
+    [string] $NodeHost,
+    [string] $NodeKit,
     [int] $SampleSec = 5,
     [string[]] $Teams = @('main', 'x', 'kit', 'eoie', 'fiscal', 'compiler', 'tibia', 'heal', 'healing')
 )
 $ErrorActionPreference = 'Stop'
+$nodeEnv = Join-Path $PSScriptRoot 'node-env.ps1'
+if (Test-Path $nodeEnv) { . $nodeEnv }
+if (-not $NodeHost) { $NodeHost = $NodeRoutes[0] }
+if (-not $NodeKit) { $NodeKit = $NodeKitPath }
 
 function Get-JobRows([string[]] $Lines, [string] $Machine) {
     $since = [DateTimeOffset]::UtcNow.AddHours(-$Hours).ToUnixTimeMilliseconds()

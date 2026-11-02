@@ -1,14 +1,3 @@
-# remote.ps1 <machine> run|job|status|sync|fetch - drive a remote kit worker node over ssh.
-# Machines: ~/.config/remote-machines.json. Transport is ssh (+ Tailscale fallback);
-# iggy is parked (unix-only fd hand-off). Internal git on the node is fine (the user
-# owns git only on this review box); the bring-back to this box is non-git (fetch).
-#
-# Offload scope (kit2): only READ-ONLY jobs - compiles, tests, reviews. Pull results
-# to scratch/job folders with `fetch`, never back into a repo tree. Jobs that write
-# into the live tree (eoie/kit regen+publish, lib land.ps1, matrix accept) stay on
-# this box: their outputs race with local edits and the sync digest cannot cover that.
-# `sync` proves the node tree matches: per-file sha256 over the changed set, verified
-# equal on both sides (Get-TreeDigest), atop `git checkout --detach HEAD` + clean.
 param(
     [Parameter(Mandatory, Position = 0)] [string] $Machine,
     [Parameter(Mandatory, Position = 1)] [ValidateSet('run', 'job', 'status', 'sync', 'verify', 'fetch', 'refresh')] [string] $Verb,
@@ -101,9 +90,6 @@ function Invoke-Remote([string] $command) {
 }
 
 function Assert-NodeCore([string] $expected, [string] $mode) {
-    # L6 guard: a verify/compile offload runs only if the node's SpiralCompilerCore.dll
-    # matches the expected core (the review box's for the synced HEAD). A mismatch means a
-    # stale installed compiler, whose results are invalid even when the source digest matched.
     $newEnv = ConvertTo-PwshLiteral (Join-RemotePath $target.gitRoot 'spiral/apps/compiler/scripts/env.ps1')
     $oldEnv = ConvertTo-PwshLiteral (Join-RemotePath $target.gitRoot 'spiral/apps/compiler/tmp/scripts/env.ps1')
     $out = Invoke-Remote ". (@($newEnv, $oldEnv) | Where-Object { Test-Path `$_ } | Select-Object -First 1); `$dll = Get-SpiralCompilerDll (ConvertTo-SpiralMode '$mode') 'Release'; `$core = Join-Path (Split-Path `$dll) 'SpiralCompilerCore.dll'; if (Test-Path `$core) { (Get-FileHash `$core -Algorithm SHA256).Hash.Substring(0, 16) } else { 'MISSING' }"
@@ -163,6 +149,7 @@ else { $a = (Get-Content /proc/stat -TotalCount 1).Split(' ', [StringSplitOption
             "`$runner = [Environment]::GetEnvironmentVariable('SPIRAL_EXE', 'User') ?? `$env:SPIRAL_EXE; if (`$runner -and (Test-Path `$runner)) { 'node runner   {0} {1:yyyy-MM-dd HH:mm} {2}' -f (Get-FileHash `$runner).Hash.Substring(0, 16), (Get-Item `$runner).LastWriteTime, `$runner } else { 'node runner   (SPIRAL_EXE unset or missing)' }"
             "`$core = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'spiral-bin' 'bin' 'single-flight' 'SpiralCompiler' 'Release' 'net11.0' 'SpiralCompilerCore.dll'; if (Test-Path `$core) { 'node compiler {0} {1:yyyy-MM-dd HH:mm}' -f (Get-FileHash `$core).Hash.Substring(0, 16), (Get-Item `$core).LastWriteTime } else { 'node compiler (missing)' }"
             "`$spiral = Join-Path $(ConvertTo-PwshLiteral $target.gitRoot) 'spiral'; `$lib = @(Get-ChildItem (Join-Path `$spiral 'lib' 'spiral') -Recurse -File -Include *.spi,*.spir -ErrorAction SilentlyContinue | Sort-Object FullName); 'node checkout {0} lib {1} files {2}' -f (git -C `$spiral rev-parse --short=8 HEAD), `$lib.Count, [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes((`$lib | ForEach-Object { '{0}={1}' -f `$_.FullName.Substring(`$spiral.Length).Replace('/', '\'), `$_.Length }) -join '|'))).Substring(0, 16)"
+            "if (`$IsWindows) { `$arch = Get-ChildItem 'C:\home\profile-mirror\profile-mirror-*.tgz' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1 } else { `$arch = `$null }; if (`$arch) { 'node mirror   {0:yyyy-MM-dd HH:mm} {1:N0}min-ago {2:N0}MB' -f `$arch.LastWriteTime, ((Get-Date) - `$arch.LastWriteTime).TotalMinutes, (`$arch.Length / 1MB) } else { 'node mirror   (no profile-mirror archive)' }"
         ) -join "`n")
         $boxRunner = @([Environment]::GetEnvironmentVariable('SPIRAL_EXE', 'User'), (Join-Path $gitRoot 'spiral\workspace\target\release\spiral.exe')) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
         $boxCore = Join-Path ($env:SPIRAL_BIN_CACHE_DIR ?? (Join-Path $env:LOCALAPPDATA 'spiral-bin')) 'bin\single-flight\SpiralCompiler\Release\net11.0\SpiralCompilerCore.dll'
@@ -232,12 +219,12 @@ function Get-LibDigest([string] $spiral) {
             Invoke-Remote "if (& $(ConvertTo-PwshLiteral $target.eoie) job list 50 2>&1 | Where-Object { `$_ -match 'state=(running|queued)' }) { exit 4 }"
             if ($script:remoteExit -eq 4) { 'remote.ps1: jobs are running or queued there; pass -Force, or use -Mirror <job> for an isolated worktree that is safe under running jobs'; exit 4 }
         }
-        Invoke-Remote "New-Item -ItemType Directory -Force $stage | Out-Null; git -C $remoteSource cat-file -e '$head^{commit}' 2>`$null; if (`$LASTEXITCODE) { git -C $remoteSource fetch -q origin 2>`$null; git -C $remoteSource cat-file -e '$head^{commit}' 2>`$null }; exit `$LASTEXITCODE"
+        Invoke-Remote "New-Item -ItemType Directory -Force $stage | Out-Null; if (-not (Test-Path $remoteSource)) { git init -q $remoteSource }; git -C $remoteSource cat-file -e '$head^{commit}' 2>`$null; if (`$LASTEXITCODE) { git -C $remoteSource fetch -q origin 2>`$null; git -C $remoteSource cat-file -e '$head^{commit}' 2>`$null }; exit `$LASTEXITCODE"
         if ($script:remoteExit -ne 0) {
             $remoteHead = "$(Invoke-Remote "git -C $remoteSource rev-parse HEAD")".Trim()
             $sharesRemoteHead = $false
             if ($remoteHead -match '^[0-9a-f]{40}$') { git -C $localRepo cat-file -e "$remoteHead^{commit}" 2>$null; $sharesRemoteHead = $LASTEXITCODE -eq 0 }
-            $range = if ($sharesRemoteHead) { @('HEAD', '--not', $remoteHead) } else { @('HEAD') }
+            $range = @(if ($sharesRemoteHead) { 'HEAD', '--not', $remoteHead } else { 'HEAD' })
             $bundle = Join-Path ([IO.Path]::GetTempPath()) "remote-sync-$syncToken.bundle"
             git -C $localRepo bundle create $bundle @range 2>$null
             if ($LASTEXITCODE) { throw "remote.ps1: git bundle failed for $repo" }
@@ -281,10 +268,6 @@ function Get-LibDigest([string] $spiral) {
         ) -join "`n")
         $syncExit = $script:remoteExit
         if ($Mirror -and $syncExit -eq 0) {
-            # Worktree mirrors share only tracked files; spiral's deps/ holds untracked
-            # dependency clones (The-Spiral-Language, polyglot) that |core- resolution needs
-            # and `git clean` strips each sync. After the clean, link deps/ read-only from the
-            # node's shared source so every concurrent mirror resolves |core- (a link, no copy).
             Invoke-Remote (@(
                 "`$sdeps = Join-Path $remoteSource 'deps'; `$mdeps = Join-Path $remoteRepo 'deps'"
                 "if ((Test-Path `$sdeps) -and -not @(Get-ChildItem `$mdeps -Force -ErrorAction SilentlyContinue).Count) {"

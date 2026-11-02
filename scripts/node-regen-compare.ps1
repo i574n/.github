@@ -1,12 +1,12 @@
 param(
     [Parameter(Mandatory)] [string] $Tree,
     [string] $Dll = '',
-    [string] $GitRoot = 'C:\home\git',
+    [string] $GitRoot = (Join-Path $PSScriptRoot '..\..'),
     [int] $Throttle = 4
 )
 $ErrorActionPreference = 'Continue'
 $dotnet = Join-Path $env:LOCALAPPDATA 'spiral-bin\toolchains\dotnet\dotnet.exe'
-$env:SPIRAL_COMPILER_PACKAGE_DIR = 'C:\home\git\spiral\deps\The-Spiral-Language\VS Code Plugin'
+$env:SPIRAL_COMPILER_PACKAGE_DIR = (Join-Path $GitRoot 'spiral\deps\The-Spiral-Language\VS Code Plugin')
 if (-not $Dll) {
     $envScript = @((Join-Path $GitRoot 'spiral/apps/compiler/scripts/env.ps1'), (Join-Path $GitRoot 'spiral/apps/compiler/tmp/scripts/env.ps1')) | Where-Object { Test-Path $_ } | Select-Object -First 1
     if (-not $envScript) { "regen compare VOID: no compiler env.ps1 under $GitRoot"; exit 2 }

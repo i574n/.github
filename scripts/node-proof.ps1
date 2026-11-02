@@ -16,13 +16,18 @@ param(
     [string] $Land,
     [string] $From,
     [string] $Repo,
-    [switch] $Apply
+    [switch] $Apply,
+    [string] $JobMachine = 'node'
 )
 $ErrorActionPreference = 'Stop'
 $Repos = @($Repos -split ',' | Where-Object { $_ })
 $LandRepos = @($LandRepos -split ',' | Where-Object { $_ })
 $Push = @($Push -split ',' | Where-Object { $_ })
 $remote = Join-Path $PSScriptRoot 'remote.ps1'
+$nodeEnv = Join-Path $PSScriptRoot 'node-env.ps1'
+if (Test-Path $nodeEnv) { . $nodeEnv }
+$nodeRemoteWin = $NodeRemoteDir -replace '/', '\'
+$nodeStageWin = $NodeStageDir -replace '/', '\'
 $gitRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 function Get-ManifestPath([string] $Name) { Join-Path $env:LOCALAPPDATA "node-proof\$Name.json" }
 function Get-RepoHashes([string] $RepoRoot) {
@@ -92,7 +97,7 @@ if ($Summary) {
 }
 if (!$MirrorName) { throw 'node-proof / -MirrorName is required unless -Summary' }
 if ($Remove) {
-    $check = "`$live = ((Get-CimInstance Win32_Process | Where-Object CommandLine).CommandLine -join [char]10); `$p = 'C:\home\remote\$MirrorName'; " +
+    $check = "`$live = ((Get-CimInstance Win32_Process | Where-Object CommandLine).CommandLine -join [char]10); `$p = '$nodeRemoteWin\$MirrorName';" +
         "if (!(Test-Path `$p)) { 'node-proof / no mirror $MirrorName' } elseif (`$live -match ([regex]::Escape(`$p) + '(\\|""|\s|$)')) { 'node-proof / $MirrorName is in use, kept' } " +
         "else { `$links = @(Get-ChildItem `$p -Recurse -Directory -Force -Attributes ReparsePoint -ErrorAction Ignore | Sort-Object { `$_.FullName.Length } -Descending); " +
         "foreach (`$l in `$links) { [IO.Directory]::Delete(`$l.FullName, `$false) }; Remove-Item -Recurse -Force `$p; " +
@@ -101,12 +106,12 @@ if ($Remove) {
     return
 }
 if (!$Label -or !$Command) { throw 'node-proof / -Label and -Command are required unless -Remove' }
-$machine = (Get-Content ~/.config/remote-machines.json -Raw | ConvertFrom-Json -AsHashtable)['laptop']
+$machine = (Get-Content ~/.config/remote-machines.json -Raw | ConvertFrom-Json -AsHashtable)[$NodeRoutes[0]]
 $alias = $machine.sshAlias ? $machine.sshAlias : $machine.alias
 $address = try { ([Net.Dns]::GetHostAddresses($machine.hostName) | Where-Object AddressFamily -eq 'InterNetwork' | Select-Object -First 1).IPAddressToString } catch { $null }
 if (!$address) { $address = (Get-Content "~/.ssh/$alias-last-ip.txt" -Raw).Trim() }
-$mirrorRoot = "C:\home\remote\$MirrorName"
-$stage = "C:\home\remote-stage\$MirrorName"
+$mirrorRoot = "$nodeRemoteWin\$MirrorName"
+$stage = "$nodeStageWin\$MirrorName"
 $jobScript = Join-Path ([IO.Path]::GetTempPath()) "node-proof-$MirrorName.ps1"
 $pin = $CompilerDll ? "`$env:SPIRAL_COMPILER_DLL = '$CompilerDll'`n" : ''
 $body = "`$ErrorActionPreference = 'Continue'`n$pin`$env:PATH = `"`$HOME\scoop\apps\erlang\current\bin;`$HOME\scoop\apps\elixir\current\bin;`$env:PATH`"`n$($Command.Replace('{mirror}', $mirrorRoot).Replace('{stage}', $stage))`nexit `$LASTEXITCODE`n"
@@ -137,4 +142,4 @@ foreach ($repo in $Repos) {
 }
 if ($LandRepos) { Write-SyncManifest $Label $LandRepos }
 $coreCheck = $RequireCore ? @('-RequireCore', $RequireCore) : @()
-pwsh -NoProfile -File $remote node job @coreCheck start $Label $TimeoutMs pwsh -NoProfile -File "$stage\run.ps1" 2>&1 | Select-Object -Last 1
+pwsh -NoProfile -File $remote $JobMachine job @coreCheck start $Label $TimeoutMs pwsh -NoProfile -File "$stage\run.ps1" 2>&1 | Select-Object -Last 1

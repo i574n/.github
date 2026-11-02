@@ -1,5 +1,5 @@
 param(
-    [string] $Root = 'C:\home\git',
+    [string] $Root = (Join-Path $PSScriptRoot '..\..'),
     [string[]] $Words = @('harness'),
     [string[]] $SkipRepos = @('zed', 'wasmer', 'rustix', 'nearcore', 'leptos', 'The-Spiral-Language', 'forgottenserver', 'vault', 'Trading-Journal', 'azeroth', 'singularity'),
     [string[]] $ExcludePaths = @(':!**/deps/**', ':!**/target/**', ':!**/_build/**', ':!**/node_modules/**', ':!docs/backlog/**', ':!scripts/banned-words-scan.ps1'),
