@@ -100,11 +100,35 @@ if (-not $reached) { throw "profile-mirror: no route reached the node ($($Routes
 scp -q $archive "${reached}:$RemoteDir/"
 if ($LASTEXITCODE -ne 0) { throw "profile-mirror: scp failed over $reached; the archive stays at $archive" }
 $localSize = (Get-Item $archive).Length
-# Verify the transfer on the node cheaply: a truncated/corrupt scp fails either the size match or tar's own listing.
-# A full remote Get-FileHash over ~800 MB was the hot-path wedge point (n19); the restore drill does deeper verification daily.
-$check = "`$f = '$RemoteDir/profile-mirror-$stamp.tgz'; `"`$((Get-Item `$f).Length) `$(@(tar -tzf `$f 2>`$null).Count)`"; Get-ChildItem '$RemoteDir' -Filter 'profile-mirror-*.tgz' | Sort-Object Name -Descending | Select-Object -Skip $Keep | Remove-Item"
-$remote = (ssh -o ConnectTimeout=8 $reached "pwsh -NoProfile -EncodedCommand $(ConvertTo-EncodedCommand $check)" 2>$null | Select-Object -First 1) -split '\s+'
-if ([long]$remote[0] -ne $localSize -or [int]$remote[1] -ne $entries) { throw "profile-mirror: node verify mismatch (local $localSize B/$entries entries, node $($remote[0]) B/$($remote[1]) entries); the archive stays at $archive" }
+# Node-side (fail-loud): size+entry verify of the landed tgz, previous-newest staleness age, TIERED retention
+# (12 hourly + 1/day for 14d + 1/week for 8w: frees most space but keeps history - an old snapshot may be the only
+# copy of something deleted since), and a stale_after status file so a monitor can detect a silently frozen mirror.
+# A full remote Get-FileHash over ~800 MB was the hot-path wedge point (n19); size+entries catches truncation cheaply.
+$remoteScript = @"
+`$dir = '$RemoteDir'
+`$leaf = 'profile-mirror-$stamp.tgz'
+`$f = Join-Path `$dir `$leaf
+`$size = (Get-Item `$f).Length
+`$entries = @(tar -tzf `$f 2>`$null).Count
+`$all = Get-ChildItem `$dir -Filter 'profile-mirror-*.tgz' | Sort-Object LastWriteTime -Descending
+`$prev = `$all | Where-Object { `$_.Name -ne `$leaf } | Select-Object -First 1
+`$prevAgeMin = if (`$prev) { [int]((Get-Date) - `$prev.LastWriteTime).TotalMinutes } else { -1 }
+`$keep = @{}
+`$all | Select-Object -First 12 | ForEach-Object { `$keep[`$_.Name] = `$true }
+`$now = Get-Date
+`$all | Group-Object { `$_.LastWriteTime.ToString('yyyyMMdd') } | ForEach-Object { `$n = `$_.Group | Sort-Object LastWriteTime -Descending | Select-Object -First 1; if ((`$now - `$n.LastWriteTime).TotalDays -le 14) { `$keep[`$n.Name] = `$true } }
+`$all | Group-Object { '{0}w{1:00}' -f `$_.LastWriteTime.Year, [int](`$_.LastWriteTime.DayOfYear / 7) } | ForEach-Object { `$n = `$_.Group | Sort-Object LastWriteTime -Descending | Select-Object -First 1; if ((`$now - `$n.LastWriteTime).TotalDays -le 56) { `$keep[`$n.Name] = `$true } }
+`$pruned = @(`$all | Where-Object { -not `$keep.ContainsKey(`$_.Name) })
+`$pruned | Remove-Item -Force -ErrorAction SilentlyContinue
+`$kept = (Get-ChildItem `$dir -Filter 'profile-mirror-*.tgz').Count
+`$unix = [int][double]::Parse((Get-Date -UFormat %s))
+Set-Content (Join-Path `$dir 'profile-mirror-status.txt') "unix=`$unix stale_after_s=7200 newest=`$leaf kept=`$kept sha256=$hash"
+"`$size `$entries `$prevAgeMin `$kept `$(`$pruned.Count)"
+"@
+$remote = (ssh -o ConnectTimeout=8 $reached "pwsh -NoProfile -EncodedCommand $(ConvertTo-EncodedCommand $remoteScript)" 2>$null | Select-Object -Last 1) -split '\s+'
+if ($remote.Count -lt 2 -or [long]$remote[0] -ne $localSize -or [int]$remote[1] -ne $entries) { throw "profile-mirror: node verify mismatch (local $localSize B/$entries entries, node $($remote[0]) B/$($remote[1]) entries); the archive stays at $archive" }
+$prevAgeMin = [int]$remote[2]; $kept = [int]$remote[3]; $prunedCount = [int]$remote[4]
+if ($prevAgeMin -gt 120) { "profile-mirror: STALE WARNING - previous newest node tgz was ${prevAgeMin}min old (>120); prior scheduled runs were silently failing" }
 . (Join-Path $PSScriptRoot 'safe-delete.ps1')
 Remove-TreeSafely $work
-"profile-mirror: $reached $RemoteDir/profile-mirror-$stamp.tgz sha256 $hash, keeping the newest $Keep"
+"profile-mirror: $reached $RemoteDir/profile-mirror-$stamp.tgz sha256 $hash; tiered retention kept $kept, pruned $prunedCount; stale_after=2h"

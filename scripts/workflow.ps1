@@ -12,4 +12,8 @@ if (!$fast) {
 
 . ../../polyglot/scripts/core.ps1
 
-Invoke-PwshNotebook $ScriptDir/workflow.livemd
+$ProgressPreference = "SilentlyContinue"
+{ pwsh pins/pins.ps1 } | Invoke-Block
+{ pwsh build.ps1 } | Invoke-Block
+{ pwsh outdated.ps1 } | Invoke-Block
+{ pwsh publish.ps1 } | Invoke-Block

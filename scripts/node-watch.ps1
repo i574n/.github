@@ -11,11 +11,12 @@ param(
   [string] $Machine = 'node',
   [int] $IdleCpu = 15,
   [int] $UnderCpu = 50,
-  [string] $Log = 'C:\home\remote-queue\node-watch.log'
+  [string] $Log = ''
 )
 # node-jobs counts only eoie jobs; remote.ps1-run work (Cells, builds, verifies)
 # is invisible to it, so CPU% is the real utilization signal. IDLE = cpu<IdleCpu,
 # UNDERUTIL = cpu<UnderCpu (cores sitting idle) -- the state the user cares about.
+if (-not $Log) { $Log = Join-Path 'C:\home\remote-queue' $(if ($Machine -in 'node', 'laptop') { 'node-watch.log' } else { "$Machine-watch.log" }) }
 $f = Join-Path $PSScriptRoot 'remote.ps1'
 New-Item -ItemType Directory -Force (Split-Path $Log) | Out-Null
 $idleStreak = 0
@@ -35,7 +36,10 @@ while ($true) {
     $flag = if ($cpu -lt 0) { '  (status unreadable)' } elseif ($idleStreak -ge 2) { "  <<< IDLE x$idleStreak (feed the node)" } elseif ($underStreak -ge 6) { "  <<< UNDERUTIL x$underStreak (cpu<$UnderCpu%, cores idle; parallelize)" } else { '' }
     "$t  cpu=$cpu%  node-jobs=$jobs$flag" | Add-Content $Log
     $state = if ($cpu -lt 0) { 'UNKNOWN' } elseif ($cpu -lt $UnderCpu) { 'AVAILABLE' } else { 'BUSY' }
-    "$(Get-Date -Format o)  cpu=$cpu%  jobs=$jobs  $state  (any lane: self-serve a per-job mirror offload when AVAILABLE)" | Set-Content (Join-Path (Split-Path $Log) 'node-status.txt')
+    $staleAfter = (Get-Date).AddSeconds([math]::Max(300, 3 * $IntervalSec)).ToString('o')
+    $line = "$(Get-Date -Format o)  machine=$Machine  cpu=$cpu%  jobs=$jobs  $state  stale_after=$staleAfter  (past stale_after this file is UNKNOWN, never BUSY: the watcher died; any lane: self-serve a per-job mirror offload when AVAILABLE)"
+    $statusFiles = @("$Machine-status.txt") + $(if ($Machine -in 'node', 'laptop') { @('node-status.txt') } else { @() })
+    foreach ($name in $statusFiles) { $line | Set-Content (Join-Path (Split-Path $Log) $name) }
   } catch {
     "$t  status-error: $($_.Exception.Message)" | Add-Content $Log
   }
