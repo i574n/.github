@@ -1,0 +1,810 @@
+flowchart LR
+  subgraph g_n_infra["Shared infrastructure  -  used by every phase, both builds"]
+    n_hashcons["<b>HashConsTable (L153)</b><br/>weak-ref buckets; Add under lock<br/>sync_root -#gt; thread-safe for hopacsota"]:::c_FFF6D5_8D6E63
+    n_consed["<b>ConsedNode#lt;'a#gt; (L131)</b><br/>equality by tag; join point keys are<br/>ConsedNodes"]:::c_FFF6D5_8D6E63
+    n_striped["<b>StripedHashConsTable (L221)</b><br/>32 shards, Fibonacci hashing (MIGRATION,<br/>not wired into peval)"]:::c_FFF6D5_8D6E63
+    n_memoize("<b>Utils.memoize (L351)</b><br/>Dictionary memo; single-flight family =<br/>memoize"):::c_FAFAFA_616161
+    n_hopacext("<b>HopacExtensions (L3794)</b><br/>Hopac Job/Promise/Stream helpers (both<br/>builds)"):::c_FAFAFA_616161
+    n_pvec("<b>PersistentVector ext. (L46)</b><br/>immutable vectors for WDiff"):::c_FAFAFA_616161
+    n_parsec("<b>ParserCombinators (L381)</b><br/>tuple/pipe/many/choice combinators"):::c_FAFAFA_616161
+    n_idadapter("<b>IdentityAdapter (L11)</b><br/>name ids are strings in this core"):::c_FAFAFA_616161
+    n_hopaclib(("<b>Hopac library</b><br/>Job, Ch, IVar, MVar, Promise, Scheduler")):::c_EEEEEE_424242
+  end
+  subgraph g_n_front["Front end  -  text -#gt; tokens -#gt; blocks -#gt; AST bundles"]
+    n_startup("<b>Startup / CliArguments (L250)</b><br/>Argu parse, DefaultEnv, PrimitiveType"):::c_FAFAFA_616161
+    n_tokenize("<b>Tokenize (L870)</b><br/>LexState, token, vscode_tokens, semantic<br/>legend"):::c_FAFAFA_616161
+    n_blocksplit("<b>BlockSplitting (L1629)</b><br/>block_at / block_all / wdiff_block_all"):::c_FAFAFA_616161
+    n_blockparse("<b>BlockParsing (L1703)</b><br/>top_statement, patterns, OrPatternJoin,<br/>operators"):::c_FAFAFA_616161
+    n_bundle("<b>BlockBundling (L3855)</b><br/>bundle_blocks, wdiff_block_bundle"):::c_FAFAFA_616161
+    n_formatter("<b>Formatter (L29325)</b><br/>4,180 lines, standalone"):::c_FAFAFA_616161
+  end
+  subgraph g_n_proj["Projects #amp; incremental (WDiff / SpiProj)  -  Hopac promises, dirty-node recompute"]
+    n_spiproj("<b>SpiProj (L28785)</b><br/>package.spiproj / TOML schema, derived<br/>modules"):::c_FAFAFA_616161
+    n_wdiff("<b>WDiff (L27901)</b><br/>tokenizer/parse/module/file/proj diffs;<br/>typecheck funs"):::c_FAFAFA_616161
+    n_wdiffprep("<b>WDiffPrepass (L28620)</b><br/>incremental prepass per file/package"):::c_FAFAFA_616161
+    n_graph("<b>Graph (L33525)</b><br/>MirroredGraph, topological_sort,<br/>circular_nodes"):::c_FAFAFA_616161
+    n_loader("<b>ServerUtils loader (L33645)</b><br/>loader_package, dirty_nodes_tc/prepass,<br/>schema state"):::c_FAFAFA_616161
+  end
+  subgraph g_n_typing["Type inference  -  Infer + adapters"]
+    n_infer("<b>Infer (L4193)</b><br/>infer, TopEnv, FilledTop Hopac.Promise"):::c_FAFAFA_616161
+    n_inferadapter{{"<b>InferAdapter (L4187)</b><br/>identity seam: failedDeclaration, module<br/>reports"}}:::c_B2DFDB_00695C
+    n_inlinedepth["<b>InlineDepth (L4147)</b><br/>InlineStackPolicy, InlineRecursionStop"]:::c_FFF6D5_8D6E63
+    n_typeerr("<b>TypeErrorCodes (L4180)</b><br/>type_error_report"):::c_FAFAFA_616161
+  end
+  subgraph g_n_prep["Prepass  -  lowering to the evaluable core"]
+    n_prepass("<b>prepassPrepass (L7783)</b><br/>propagate (L7163) -#gt; resolve (L7301) -#gt;<br/>lower (L7424)"):::c_FAFAFA_616161
+    n_prepassadapter{{"<b>PrepassAdapter (L6742)</b><br/>identity seam: memoPatternRef,<br/>visitPatternRefOnce"}}:::c_B2DFDB_00695C
+    n_prepenv["<b>PartEvalPrepassEnv (L7673)</b><br/>add_term / fresh vars / process_term"]:::c_FFF6D5_8D6E63
+  end
+  subgraph g_n_pe["Partial evaluation core (PartEval, L8930-12004)  -  the SAME code in both builds; every concurrency-sensitive step goes through PartEvalSeams"]
+    subgraph g_n_pe_tables["peval state (per build)  -  memo tables keyed by hash-consed join point keys"]
+      n_jpm["<b>join_point_method</b><br/>Dictionary#lt;(backend, body),<br/>Dictionary#lt;key, (seq option, ty option,<br/>name)#gt; * HashConsTable#gt;"]:::c_FFF6D5_8D6E63
+      n_jpc["<b>join_point_closure</b><br/>Dictionary#lt;(backend, body),<br/>Dictionary#lt;key, (domain, seq) option#gt; *<br/>HashConsTable#gt;"]:::c_FFF6D5_8D6E63
+      n_jpt["<b>join_point_type</b><br/>Dictionary#lt;body, Dictionary#lt;key, Ty<br/>option#gt; * HashConsTable#gt;"]:::c_FFF6D5_8D6E63
+      n_bsv["<b>backend_switch_validated</b><br/>Dictionary#lt;(backend, RData[]), Ty#gt; + its<br/>HashConsTable"]:::c_FFF6D5_8D6E63
+      n_globals["<b>s.globals</b><br/>ordered list of emitted global text;<br/>GlobalsIndex keeps a HashSet per list"]:::c_FFF6D5_8D6E63
+    end
+    subgraph g_n_pe_ops["peval operations that touch the seams  -  35 call sites"]
+      n_closure{{"<b>closure_convert (L9770)</b><br/>family -#gt; claim -#gt; announce(true) -#gt;<br/>key_body #quot;closure#quot; -#gt; defer -#gt; fill"}}:::c_E1BEE7_6A1B9A
+      n_tjp{{"<b>type join point TJoinPoint' (L9955)</b><br/>family -#gt; claim -#gt; key_body #quot;type#quot; -#gt; ty<br/>-#gt; fill (never deferred)"}}:::c_E1BEE7_6A1B9A
+      n_mjp{{"<b>method join point EJoinPoint' (L10380)</b><br/>family -#gt; claim -#gt; announce(annotated?)<br/>-#gt; key_body #quot;method#quot; -#gt; defer -#gt; fill"}}:::c_E1BEE7_6A1B9A
+      n_bswitch{{"<b>BackendSwitch validation (L10844)</b><br/>validated -#gt; read #124; key_body #quot;bsv#quot; -#gt;<br/>apply -#gt; fill"}}:::c_E1BEE7_6A1B9A
+      n_uninh{{"<b>is_uninhabited (L9939)</b><br/>nesting counter, limit 32"}}:::c_E1BEE7_6A1B9A
+      n_printst{{"<b>PrintStatic / PrintRaw (L11775)</b><br/>print seam"}}:::c_E1BEE7_6A1B9A
+      n_mainroot{{"<b>main entry (L12001)</b><br/>root globals (term_scope main ())"}}:::c_E1BEE7_6A1B9A
+    end
+    subgraph g_n_pe_guards["Runaway guards #amp; thread-local state  -  what a parallel body must save/restore"]
+      n_runaway("<b>RunawayUnrollDiagnostic (L9585)</b><br/>Rust-style report; ConcurrentDictionary<br/>of source lines"):::c_FAFAFA_616161
+      n_dynif["<b>DynamicIfNesting (L9646)</b><br/>ThreadLocal depth,<br/>SPIRAL_IF_NESTING_LIMIT=1000"]:::c_FFF6D5_8D6E63
+      n_unionnest["<b>UnionNesting (L9653)</b><br/>ThreadLocal depth, limit 256, EJP0041"]:::c_FFF6D5_8D6E63
+      n_gindex["<b>GlobalsIndex (L9666)</b><br/>ConditionalWeakTable#lt;list, HashSet#gt;"]:::c_FFF6D5_8D6E63
+      n_rustgap["<b>RustGapTrace (L9674)</b><br/>ThreadLocal validating;<br/>ConcurrentDictionary of missing arms"]:::c_FFF6D5_8D6E63
+    end
+    n_peval{{"<b>peval env main (L9705)</b><br/>builds the session, the tables and<br/>LangEnv; evaluates main"}}:::c_37474F_000000
+    n_topenv["<b>PartEvalTopEnv</b><br/>prototypes_instances, nominals, backend,<br/>inline_restart"]:::c_FFF6D5_8D6E63
+    n_langenv["<b>LangEnv</b><br/>trace, seq, cse, i, env stacks, backend,<br/>globals (ResizeArray#lt;string#gt;)"]:::c_FFF6D5_8D6E63
+    n_result["<b>PartEvalResult (L9573)</b><br/>join_point_method, join_point_closure,<br/>ty_to_data, globals"]:::c_FFF6D5_8D6E63
+    n_termscope("<b>term / term_scope''</b><br/>the evaluator: one big recursive match<br/>over E"):::c_FAFAFA_616161
+    n_cse("<b>push_typedop + CSE</b><br/>cse_tryfind / cse_add on s.cse"):::c_FAFAFA_616161
+  end
+  subgraph g_n_seams["PartEvalSeams API (identical signatures in both builds)  -  Adapter#lt;'env#gt; + Session#lt;'env#gt; + 16 operations"]
+    n_adapter{{"<b>Adapter#lt;'env#gt;</b><br/>globals, with_globals, dynamic_if/set,<br/>validating/set, rebuild_index"}}:::c_EDE7F6_5E35B1
+    n_s_session{{"<b>Session#lt;'env#gt;</b><br/>single-flight: Inline   #124;   hopacsota:<br/>class or null"}}:::c_EDE7F6_5E35B1
+    n_s_claimty{{"<b>Claim#lt;'v#gt; = Found 'v</b><br/>Owner #124; who evaluates a key"}}:::c_EDE7F6_5E35B1
+    n_s_start("<b>start_for inline_restart adapter</b><br/>open a session for this peval"):::c_BBDEFB_0D47A1
+    n_s_restart("<b>with_conflict_restart f</b><br/>f false, or f true after a conflict"):::c_BBDEFB_0D47A1
+    n_s_root("<b>root session globals f</b><br/>run main, then settle"):::c_BBDEFB_0D47A1
+    n_s_defer("<b>defer session s relative deferred evaluate</b><br/>evaluate a join point body now or later"):::c_BBDEFB_0D47A1
+    n_s_claim("<b>claim session table key pending</b><br/>Found value or Owner"):::c_BBDEFB_0D47A1
+    n_s_announce("<b>announce session usable table key value</b><br/>publish a usable signature early"):::c_BBDEFB_0D47A1
+    n_s_fill("<b>fill session table key value</b><br/>publish the finished value"):::c_BBDEFB_0D47A1
+    n_s_family("<b>family session outer create key</b><br/>per-(backend, body) inner table"):::c_BBDEFB_0D47A1
+    n_s_keyhit("<b>key_hit session key s</b><br/>a reuse of a finished key"):::c_BBDEFB_0D47A1
+    n_s_keybody("<b>key_body session key label s</b><br/>the env that evaluates a key's body"):::c_BBDEFB_0D47A1
+    n_s_print("<b>print session s text</b><br/>compile-time printing"):::c_BBDEFB_0D47A1
+    n_s_nesting("<b>nesting session shared</b><br/>which counter is_uninhabited uses"):::c_BBDEFB_0D47A1
+    n_s_validated("<b>validated session table key</b><br/>backend switch type already known?"):::c_BBDEFB_0D47A1
+    n_s_read("<b>read session table key</b><br/>read a validated type"):::c_BBDEFB_0D47A1
+    n_s_active("<b>active session</b><br/>is a parallel session running?"):::c_BBDEFB_0D47A1
+  end
+  subgraph g_n_sf["SINGLE-FLIGHT build (#35;else branch, L8892-8928)  -  every seam is an F#35; inline function: zero cost, depth-first, one thread"]
+    n_sf_session("<b>Session = Inline</b><br/>a one-case union; no state at all"):::c_C8E6C9_1B5E20
+    n_sf_start("<b>start_for = Inline</b><br/>inline_restart is ignored"):::c_C8E6C9_1B5E20
+    n_sf_restart("<b>with_conflict_restart = f false</b><br/>a conflict cannot happen"):::c_C8E6C9_1B5E20
+    n_sf_root("<b>root = f ()</b><br/>main runs to completion on the build<br/>thread"):::c_C8E6C9_1B5E20
+    n_sf_defer("<b>defer = evaluate s</b><br/>the body is evaluated immediately, depth<br/>first, in the current env"):::c_C8E6C9_1B5E20
+    n_sf_claim("<b>claim = TryGetValue, else table.[key] #lt;- pending; Owner</b><br/>pending marks 'in progress' for<br/>recursion"):::c_C8E6C9_1B5E20
+    n_sf_announce("<b>announce = table.[key] #lt;- value</b><br/>just a write"):::c_C8E6C9_1B5E20
+    n_sf_fill("<b>fill = table.[key] #lt;- value</b><br/>just a write"):::c_C8E6C9_1B5E20
+    n_sf_family("<b>family = Utils.memoize outer create key</b><br/>one shared inner table"):::c_C8E6C9_1B5E20
+    n_sf_keyhit("<b>key_hit = ()</b><br/>no markers"):::c_C8E6C9_1B5E20
+    n_sf_keybody("<b>key_body = s</b><br/>globals untouched"):::c_C8E6C9_1B5E20
+    n_sf_print("<b>print = printfn</b><br/>printed at the moment of evaluation"):::c_C8E6C9_1B5E20
+    n_sf_nesting("<b>nesting = shared ref</b><br/>one counter per peval"):::c_C8E6C9_1B5E20
+    n_sf_validated("<b>validated = ContainsKey #124;</b>"):::c_C8E6C9_1B5E20
+    n_sf_read("<b>read = table.[key] #124;</b>"):::c_C8E6C9_1B5E20
+    n_sf_active("<b>active = false</b><br/>validation globals come from<br/>validation_root_globals"):::c_C8E6C9_1B5E20
+  end
+  subgraph g_n_hs["HOPACSOTA build (#35;if SPIRAL_CORE_HOPACSOTA, L8241-8890)  -  the single-flight core + a parallel layer"]
+    subgraph g_n_hs_seams["PartEvalSeams (hopacsota, L8660-8890)  -  Session: policy, deferral, markers, canonical replay"]
+      n_hs_policy[/"<b>Policy</b><br/>DepthFirst #124; BreadthFirst #124; Seeded seed<br/>#124; Parallel; None = inline (no session)"/]:::c_ECEFF1_455A64
+      n_hs_session["<b>Session#lt;'env#gt;(policy, adapter)</b><br/>queue, own Marks, seeded Random, engine<br/>(null unless Parallel), census"]:::c_FFFFFF_212121
+      n_hs_start("<b>start / start_for</b><br/>inline_restart -#gt; null session; policy<br/>None -#gt; null"):::c_FFE0B2_BF360C
+      n_hs_restart("<b>with_conflict_restart</b><br/>try f false; on HopacsotaConflict:<br/>eprintfn ... restart in canonical<br/>single-flight order (D4); f true"):::c_FFE0B2_BF360C
+      n_hs_root("<b>Session.Root</b><br/>Parallel -#gt; new<br/>Engine(evaluating_threads); f();<br/>Finished; Drain; census; Check; Finish;<br/>Close"):::c_FFE0B2_BF360C
+      n_hs_defer("<b>Session.Defer</b><br/>BFS/Seeded/Parallel with an annotation:<br/>new 'globals' marker + child list, body<br/>closure; returns the annotated result at<br/>once"):::c_FFE0B2_BF360C
+      n_hs_body("<b>deferred body closure</b><br/>saves/zeroes dynamic_if + validating,<br/>evaluate body_env, failure -#gt; 'fail'<br/>marker, restores, census row"):::c_FFE0B2_BF360C
+      n_hs_drain("<b>Session.Drain</b><br/>queue loop (Seeded: random pick) or<br/>engine.Drain"):::c_FFE0B2_BF360C
+      n_hs_keyhit("<b>Session.KeyHit</b><br/>appends the key's marker to the caller's<br/>globals"):::c_FFE0B2_BF360C
+      n_hs_keybody("<b>Session.KeyBody</b><br/>names marker 'key-#lt;label#gt;', new child<br/>list, env with that list as globals"):::c_FFE0B2_BF360C
+      n_hs_print("<b>Session.Print</b><br/>'print' marker; text kept until Finish"):::c_FFE0B2_BF360C
+      n_hs_finish("<b>Session.Finish</b><br/>merge Marks of every context; walk<br/>markers from root; replay prints; first<br/>failure wins; dedupe globals;<br/>rebuild_index"):::c_FFE0B2_BF360C
+      n_hs_census["<b>census</b><br/>SPIRAL_HOPACSOTA_CENSUS_OUT: body,<br/>parent, spawn_at_us, self_us"]:::c_FFF6D5_8D6E63
+      n_hs_fallback("<b>seam ops with engine = null</b><br/>claim/fill/announce/family/nesting/validated/read<br/>fall back to the single-flight code"):::c_FFE0B2_BF360C
+      n_hs_marks["<b>Marks(prefix)</b><br/>Children, Prints, Failures, Keys; names<br/>'\u0001hopacsota-#lt;kind#gt;-#lt;prefix#gt;#lt;n#gt;'"]:::c_FFF6D5_8D6E63
+    end
+    subgraph g_n_hs_engine["PartEvalEngine (L8243-8657)  -  Hopac-mediated claim table on dedicated 1.5 GB body threads"]
+      subgraph g_n_hs_table["Table: the single source of truth for keys  -  serialized behind MVar#lt;Table#gt;"]
+        n_t_table["<b>Table()</b><br/>entries: Dictionary#lt;obj, Entry#gt;;<br/>counters named/conflicts/abandoned"]:::c_FFFFFF_212121
+        n_t_decide("<b>Table.Decide id op</b><br/>the only place keys change state"):::c_FFE0B2_BF360C
+        n_t_entry["<b>Entry(owner, marker)</b><br/>State + Waiters: IVar#lt;unit#gt; list"]:::c_FFF6D5_8D6E63
+        n_t_state["<b>EntryState</b><br/>Evaluating -#gt; Announced #124; Filled #124;<br/>Abandoned"]:::c_FFF6D5_8D6E63
+        n_t_ops["<b>TableOp</b><br/>ClaimOp #124; FillOp #124; AnnounceOp #124;<br/>AbandonOp #124; FamilyOp"]:::c_FFF6D5_8D6E63
+        n_t_replies["<b>TableReply</b><br/>Taken #124; Present #124; Again #124; Wait #124; Written<br/>#124; Family #124; Failed"]:::c_FFF6D5_8D6E63
+        n_t_published["<b>published</b><br/>ImmutableDictionary via Volatile.Write;<br/>lock-free reads by every thread"]:::c_FFF6D5_8D6E63
+        n_t_guard["<b>MVar#lt;Table#gt; guard</b><br/>serializes Decide calls"]:::c_FFF6D5_8D6E63
+      end
+      subgraph g_n_hs_graph["Graph: wait-for edges  -  deadlock detection"]
+        n_g_graph["<b>Graph()</b><br/>waits_on: Dictionary#lt;int, int#gt;; cycles<br/>counter"]:::c_FFFFFF_212121
+        n_g_req["<b>GraphRequest</b><br/>AddEdge(waiter, owner, accepted) #124;<br/>RemoveEdge #124; CountCycles"]:::c_FFF6D5_8D6E63
+        n_g_ch["<b>Ch#lt;GraphRequest#gt; edges</b><br/>foreverServer"]:::c_FFF6D5_8D6E63
+      end
+      subgraph g_n_hs_work["Worklist: body scheduling  -  tokens = workers - 1"]
+        n_w_list["<b>Worklist(tokens)</b><br/>queue, idle IVars, outstanding, drained"]:::c_FFFFFF_212121
+        n_w_req["<b>WorkRequest</b><br/>Spawn #124; Take #124; Drain #124; Stop"]:::c_FFF6D5_8D6E63
+        n_w_settle("<b>Worklist.Settle</b><br/>hand queued bodies to idle threads while<br/>tokens #gt; 0"):::c_FFE0B2_BF360C
+        n_w_ch["<b>Ch#lt;WorkRequest#gt; work</b><br/>foreverServer"]:::c_FFF6D5_8D6E63
+      end
+      subgraph g_n_hs_ctx["Per-thread BodyContext  -  ThreadLocal, one per body thread + root"]
+        n_c_ctx["<b>BodyContext(id)</b><br/>Marks, Ready, Families, Nesting, Chain,<br/>Inherited, counters, Crashes"]:::c_FFF6D5_8D6E63
+        n_c_tl["<b>ThreadLocal context</b><br/>root context 0 + one per body thread"]:::c_FFF6D5_8D6E63
+      end
+      n_e_engine["<b>Engine(workers)</b><br/>owns control scheduler, contexts, table,<br/>guard, graph, worklist, threads"]:::c_FFFFFF_212121
+      n_e_control("<b>control Scheduler</b><br/>Hopac scheduler with NumWorkers = 1; all<br/>coordination runs here"):::c_FFE0B2_BF360C
+      n_e_bridge("<b>bridge op</b><br/>Scheduler.run control op from a body<br/>thread; counts Bridges"):::c_FFE0B2_BF360C
+      n_e_ask("<b>ask id op</b><br/>MVar.modifyFun guard (table.Decide),<br/>then wake the returned waiters"):::c_FFE0B2_BF360C
+      n_e_settle("<b>settle</b><br/>ClaimOp; on Wait -#gt; await -#gt; retry"):::c_FFE0B2_BF360C
+      n_e_await("<b>await</b><br/>AddEdge to Graph; if accepted, read the<br/>IVar and RemoveEdge; else<br/>HopacsotaConflict"):::c_FFE0B2_BF360C
+      n_e_abandon("<b>abandon_chain</b><br/>AbandonOp for every key still in the<br/>context chain"):::c_FFE0B2_BF360C
+      n_e_stack("<b>lower_stack_limit</b><br/>reflection:<br/>Hopac.Core.Worker.ThreadStackLimit<br/>lowered for 1.5 GB stacks"):::c_FFE0B2_BF360C
+      n_e_threads("<b>body threads</b><br/>workers x Thread('hopacsota-body-N', 1.5<br/>GB stack), background"):::c_FFE0B2_BF360C
+      n_e_loop("<b>body_loop</b><br/>Take work -#gt; run body -#gt; abandon_chain<br/>-#gt; report finished"):::c_FFE0B2_BF360C
+      n_e_claim("<b>Engine.Claim</b><br/>ctx.Ready -#gt; published snapshot -#gt;<br/>settle; Taken -#gt; push to Chain"):::c_FFE0B2_BF360C
+      n_e_validated("<b>Engine.Validated</b><br/>like Claim without writing pending"):::c_FFE0B2_BF360C
+      n_e_read("<b>Engine.Read</b><br/>ctx.Ready only; else compiler error"):::c_FFE0B2_BF360C
+      n_e_fill("<b>Engine.Fill</b><br/>FillOp; cache in Ready; leave Chain"):::c_FFE0B2_BF360C
+      n_e_announce("<b>Engine.Announce</b><br/>AnnounceOp(usable); leave Chain if<br/>usable"):::c_FFE0B2_BF360C
+      n_e_family("<b>Engine.Family</b><br/>per-context local table; FamilyOp create<br/>under the guard"):::c_FFE0B2_BF360C
+      n_e_spawn("<b>Engine.Spawn</b><br/>Ch.give work (Spawn(body, Chain @<br/>Inherited))"):::c_FFE0B2_BF360C
+      n_e_drain("<b>Engine.Drain</b><br/>Drain request; rethrow the first body<br/>crash"):::c_FFE0B2_BF360C
+      n_e_check("<b>Engine.Check</b><br/>conflicts + cycles #gt; 0 or FORCE_CONFLICT<br/>-#gt; raise HopacsotaConflict"):::c_FFE0B2_BF360C
+      n_e_close("<b>Engine.Close</b><br/>Stop, join threads, stats line, kill<br/>scheduler"):::c_FFE0B2_BF360C
+      n_e_conflict{{"<b>exception HopacsotaConflict</b><br/>raised by await (cycle) or Check"}}:::c_FFCDD2_B71C1C
+    end
+  end
+  subgraph g_n_diverge["How the two builds diverge  -  same inputs, same output text, different journeys"]
+    n_d_order["<b>Order</b><br/>SF: depth first, a body runs where it is met. HS:<br/>annotated bodies are deferred; markers keep their<br/>place; Finish restores the canonical order"]:::c_FFFDE7_F9A825
+    n_d_err["<b>Errors</b><br/>SF: the first exception propagates. HS: a failure<br/>becomes a 'fail' marker; Finish raises the first one<br/>in canonical order"]:::c_FFFDE7_F9A825
+    n_d_print["<b>Printing</b><br/>SF: printfn immediately. HS: buffered as 'print'<br/>markers and replayed in order"]:::c_FFFDE7_F9A825
+    n_d_rec["<b>Recursion</b><br/>SF: re-entering an owned key finds the pending<br/>value: unannotated -#gt; 'Recursive join points must be<br/>annotated'; announce made the annotated type usable.<br/>HS: AnnounceOp also releases threads waiting on the<br/>key"]:::c_FFFDE7_F9A825
+    n_d_conf["<b>Conflicts</b><br/>SF: impossible. HS: a wait-for cycle or a foreign<br/>claim of an abandoned key -#gt; HopacsotaConflict -#gt;<br/>whole peval rerun with inline_restart = true<br/>(single-flight order)"]:::c_FFFDE7_F9A825
+    n_d_nest["<b>Counters</b><br/>SF: one shared uninhabited counter. HS: Nesting per<br/>BodyContext; dynamic_if/validating saved and zeroed<br/>per body"]:::c_FFFDE7_F9A825
+    n_d_globals["<b>Validation globals</b><br/>SF: validation_root_globals for the build backend.<br/>HS: s.globals of the current key body"]:::c_FFFDE7_F9A825
+    n_d_same["<b>Same result</b><br/>both builds must emit byte-identical code; the<br/>tables passed to codegen are the same Dictionary<br/>instances"]:::c_FFFDE7_F9A825
+  end
+  subgraph g_n_codegen["Code generation (19 backends)  -  reads the peval result tables"]
+    subgraph g_n_backends["Backends  -  build_many / build dispatch (L35115)"]
+      n_b_fsharp["<b>F#35;</b><br/>codegenFsharp L12592"]:::c_E3F2FD_1565C0
+      n_b_rust["<b>Rust</b><br/>codegenRust L13525"]:::c_E3F2FD_1565C0
+      n_b_delphi["<b>Delphi</b><br/>L14686"]:::c_E3F2FD_1565C0
+      n_b_zig["<b>Zig</b><br/>L15368"]:::c_E3F2FD_1565C0
+      n_b_lean["<b>Lean</b><br/>L15966"]:::c_E3F2FD_1565C0
+      n_b_bend["<b>Bend</b><br/>L16804"]:::c_E3F2FD_1565C0
+      n_b_gleam["<b>Gleam</b><br/>L17745"]:::c_E3F2FD_1565C0
+      n_b_lua["<b>Lua</b><br/>L18640"]:::c_E3F2FD_1565C0
+      n_b_wasm["<b>Wasm</b><br/>L19899"]:::c_E3F2FD_1565C0
+      n_b_wgsl["<b>WGSL</b><br/>L20576"]:::c_E3F2FD_1565C0
+      n_b_calyx["<b>Calyx</b><br/>L21151"]:::c_E3F2FD_1565C0
+      n_b_kotlin["<b>Kotlin</b><br/>L21686"]:::c_E3F2FD_1565C0
+      n_b_swift["<b>Swift</b><br/>L22493"]:::c_E3F2FD_1565C0
+      n_b_qasm["<b>OpenQASM</b><br/>L23243"]:::c_E3F2FD_1565C0
+      n_b_ebpf["<b>eBPF</b><br/>L23559"]:::c_E3F2FD_1565C0
+      n_b_ts["<b>TypeScript</b><br/>L24026"]:::c_E3F2FD_1565C0
+      n_b_c["<b>C</b><br/>L24781"]:::c_E3F2FD_1565C0
+      n_b_cpp["<b>Cpp + Cuda</b><br/>L26089"]:::c_E3F2FD_1565C0
+      n_b_py["<b>Python + Cuda</b><br/>L27214"]:::c_E3F2FD_1565C0
+    end
+    n_cg_adapter{{"<b>CodegenAdapter (L12478)</b><br/>codegenMethodBody / codegenClosureBody<br/>read join_point_method/closure"}}:::c_B2DFDB_00695C
+    n_cg_utils("<b>CodegenUtils (L12005)</b><br/>CodegenEnv, line/indent, generated names"):::c_FAFAFA_616161
+    n_cg_dead("<b>DeadPureLetElision (L12296)</b><br/>drops pure lets before emit"):::c_FAFAFA_616161
+    n_cg_unused("<b>UnusedGlobals.prune (L12260)</b><br/>prunes result.globals"):::c_FAFAFA_616161
+    n_cg_refc("<b>RefCounting (L24644)</b><br/>refc_prepass for C"):::c_FAFAFA_616161
+  end
+  subgraph g_n_server["Supervisor, server #amp; entry points  -  where a build starts"]
+    n_sv_main{{"<b>main (L35517)</b><br/>CLI / server start"}}:::c_37474F_000000
+    n_sv_hub("<b>SpiralHub (L35435)</b><br/>SignalR hub"):::c_FAFAFA_616161
+    n_sv_new("<b>new_server (L35265)</b><br/>ServerHooks"):::c_FAFAFA_616161
+    n_sv_super("<b>supervisor_server (L34729)</b><br/>requests, project state, attention"):::c_FAFAFA_616161
+    n_sv_build("<b>BuildFile body (L35085)</b><br/>runs on its own 1.5 GB background thread"):::c_FAFAFA_616161
+    n_sv_many("<b>build_many (L35099)</b><br/>peval -#gt; codegen -#gt; RUST-GAP check"):::c_FAFAFA_616161
+    n_sv_out("<b>OutputFiles (L33636)</b><br/>write_output_atomically_async"):::c_FAFAFA_616161
+    n_sv_xcompat("<b>XCompat (L34179)</b><br/>postability warnings before a build"):::c_FAFAFA_616161
+  end
+  subgraph g_n_env["Environment switches  -  read once at startup"]
+    n_env_workers[/"<b>SPIRAL_HOPACSOTA_WORKERS</b><br/>body threads (default = ProcessorCount)"/]:::c_ECEFF1_455A64
+    n_env_policy[/"<b>SPIRAL_HOPACSOTA_POLICY</b><br/>inline #124; dfs #124; bfs #124; random:#lt;seed#gt; #124;<br/>parallel"/]:::c_ECEFF1_455A64
+    n_env_stats[/"<b>SPIRAL_HOPACSOTA_STATS=1</b><br/>engine counters on Close"/]:::c_ECEFF1_455A64
+    n_env_census[/"<b>SPIRAL_HOPACSOTA_CENSUS_OUT</b><br/>per-body timing file"/]:::c_ECEFF1_455A64
+    n_env_force[/"<b>SPIRAL_HOPACSOTA_FORCE_CONFLICT=1</b><br/>test the restart path"/]:::c_ECEFF1_455A64
+    n_env_gap[/"<b>SPIRAL_RUST_GAP_TRACE=1</b><br/>forces 1 evaluating thread"/]:::c_ECEFF1_455A64
+    n_env_if[/"<b>SPIRAL_IF_NESTING_LIMIT</b><br/>dynamic if depth guard"/]:::c_ECEFF1_455A64
+    n_env_union[/"<b>SPIRAL_UNION_NESTING_LIMIT</b><br/>union nesting guard"/]:::c_ECEFF1_455A64
+    n_env_define[/"<b>build define SPIRAL_CORE_HOPACSOTA</b><br/>build.ps1 -Mode hopacsota vs -Mode<br/>single-flight"/]:::c_ECEFF1_455A64
+  end
+  n_sv_main ==>|"starts"| n_sv_new
+  n_sv_new ==> n_sv_super
+  n_sv_hub ==>|"client requests"| n_sv_super
+  n_sv_super ==>|"project load"| n_loader
+  n_loader ==>|"schema"| n_spiproj
+  n_loader ==>|"package order"| n_graph
+  n_loader ==>|"dirty nodes"| n_wdiff
+  n_wdiff ==> n_tokenize
+  n_tokenize ==> n_blocksplit
+  n_blocksplit ==> n_blockparse
+  n_blockparse ==> n_bundle
+  n_bundle ==>|"typecheck"| n_infer
+  n_wdiff ==> n_wdiffprep
+  n_wdiffprep ==> n_prepass
+  n_infer ==>|"FilledTop"| n_prepass
+  n_sv_super ==> n_sv_xcompat
+  n_sv_super ==>|"BuildFile"| n_sv_build
+  n_sv_build ==> n_sv_many
+  n_sv_many -->|"peval under restart"| n_s_restart
+  n_s_restart ==>|"inline_restart"| n_peval
+  n_peval ==>|"returns"| n_result
+  n_result ==>|"tables"| n_cg_adapter
+  n_sv_many ==> n_cg_dead
+  n_cg_dead ==> n_cg_unused
+  n_cg_adapter ==> n_cg_utils
+  n_cg_utils ==> n_b_fsharp
+  n_cg_utils ==> n_b_rust
+  n_cg_utils ==> n_b_delphi
+  n_cg_utils ==> n_b_zig
+  n_cg_utils ==> n_b_lean
+  n_cg_utils ==> n_b_bend
+  n_cg_utils ==> n_b_gleam
+  n_cg_utils ==> n_b_lua
+  n_cg_utils ==> n_b_wasm
+  n_cg_utils ==> n_b_wgsl
+  n_cg_utils ==> n_b_calyx
+  n_cg_utils ==> n_b_kotlin
+  n_cg_utils ==> n_b_swift
+  n_cg_utils ==> n_b_qasm
+  n_cg_utils ==> n_b_ebpf
+  n_cg_utils ==> n_b_ts
+  n_cg_refc ==> n_b_c
+  n_cg_utils ==> n_b_cpp
+  n_cg_utils ==> n_b_py
+  n_sv_many ==>|"generated files"| n_sv_out
+  n_startup ==>|"CLI args"| n_sv_main
+  n_sv_many -.->|"missing arm check"| n_rustgap
+  n_formatter -.->|"tokens"| n_tokenize
+  n_parsec -.-> n_blockparse
+  n_pvec -.-> n_wdiff
+  n_hopacext -.->|"promises/streams"| n_wdiff
+  n_hopacext -.->|"FilledTop promise"| n_infer
+  n_hopaclib -.-> n_hopacext
+  n_hopaclib -.->|"Scheduler"| n_e_control
+  n_hopaclib -.->|"MVar"| n_t_guard
+  n_hopaclib -.->|"Ch"| n_g_ch
+  n_idadapter -.-> n_infer
+  n_inferadapter -.-> n_infer
+  n_prepassadapter -.-> n_prepass
+  n_inlinedepth -.-> n_infer
+  n_typeerr -.-> n_infer
+  n_prepenv -.-> n_prepass
+  n_consed -.-> n_hashcons
+  n_striped -.->|"32 x HashConsTable"| n_hashcons
+  n_peval -.-> n_topenv
+  n_peval -.-> n_langenv
+  n_peval -.-> n_jpm
+  n_peval -.-> n_jpc
+  n_peval -.-> n_jpt
+  n_peval -.-> n_bsv
+  n_peval -->|"start_for env.inline_restart"| n_s_start
+  n_peval -.->|"builds the adapter"| n_adapter
+  n_adapter -.->|"dynamic_if / set"| n_dynif
+  n_adapter -.->|"validating / set"| n_rustgap
+  n_adapter -.->|"rebuild_index"| n_gindex
+  n_adapter -.->|"globals / with_globals"| n_langenv
+  n_peval --> n_mainroot
+  n_mainroot --> n_s_root
+  n_mainroot -->|"main ()"| n_termscope
+  n_termscope --> n_closure
+  n_termscope --> n_tjp
+  n_termscope --> n_mjp
+  n_termscope --> n_bswitch
+  n_termscope --> n_uninh
+  n_termscope --> n_printst
+  n_termscope --> n_cse
+  n_termscope -->|"EJP0041 / unroll"| n_runaway
+  n_termscope -.-> n_unionnest
+  n_termscope -.-> n_dynif
+  n_langenv -.-> n_globals
+  n_gindex -.-> n_globals
+  n_jpm -.->|"key interning"| n_hashcons
+  n_jpc -.-> n_hashcons
+  n_jpt -.-> n_hashcons
+  n_bsv -.-> n_hashcons
+  n_result -.-> n_jpm
+  n_result -.-> n_jpc
+  n_result -.-> n_globals
+  n_cg_adapter -.->|"codegenMethodBody"| n_jpm
+  n_cg_adapter -.->|"codegenClosureBody"| n_jpc
+  n_closure -->|"1"| n_s_family
+  n_closure -->|"2"| n_s_claim
+  n_closure -->|"3 usable"| n_s_announce
+  n_closure -->|"4 'closure'"| n_s_keybody
+  n_closure -->|"5 Some ()"| n_s_defer
+  n_closure -->|"6"| n_s_fill
+  n_closure -->|"Found"| n_s_keyhit
+  n_tjp -->|"1"| n_s_family
+  n_tjp -->|"2"| n_s_claim
+  n_tjp -->|"3 'type'"| n_s_keybody
+  n_tjp -->|"4"| n_s_fill
+  n_tjp -->|"Found"| n_s_keyhit
+  n_mjp -->|"1"| n_s_family
+  n_mjp -->|"2"| n_s_claim
+  n_mjp -->|"3 if annotated"| n_s_announce
+  n_mjp -->|"4 'method'"| n_s_keybody
+  n_mjp -->|"5 annot"| n_s_defer
+  n_mjp -->|"6"| n_s_fill
+  n_mjp -->|"Found"| n_s_keyhit
+  n_bswitch -->|"1"| n_s_validated
+  n_bswitch -->|"2 if validated"| n_s_read
+  n_bswitch -->|"else 'bsv'"| n_s_keybody
+  n_bswitch --> n_s_fill
+  n_bswitch -->|"globals choice"| n_s_active
+  n_bswitch --> n_s_keyhit
+  n_uninh --> n_s_nesting
+  n_printst --> n_s_print
+  n_s_claim -.-> n_s_claimty
+  n_s_start -.-> n_s_session
+  n_s_start -.-> n_adapter
+  n_closure -.-> n_jpc
+  n_tjp -.-> n_jpt
+  n_mjp -.-> n_jpm
+  n_bswitch -.-> n_bsv
+  n_s_start ==> n_sf_start
+  n_s_session ==> n_sf_session
+  n_s_restart ==> n_sf_restart
+  n_s_root ==> n_sf_root
+  n_s_defer ==> n_sf_defer
+  n_s_claim ==> n_sf_claim
+  n_s_announce ==> n_sf_announce
+  n_s_fill ==> n_sf_fill
+  n_s_family ==> n_sf_family
+  n_s_keyhit ==> n_sf_keyhit
+  n_s_keybody ==> n_sf_keybody
+  n_s_print ==> n_sf_print
+  n_s_nesting ==> n_sf_nesting
+  n_s_validated ==> n_sf_validated
+  n_s_read ==> n_sf_read
+  n_s_active ==> n_sf_active
+  n_sf_family -.-> n_memoize
+  n_sf_defer -->|"evaluates now"| n_termscope
+  n_s_start ==> n_hs_start
+  n_s_session ==> n_hs_session
+  n_s_restart ==> n_hs_restart
+  n_s_root ==> n_hs_root
+  n_s_defer ==> n_hs_defer
+  n_s_keyhit ==> n_hs_keyhit
+  n_s_keybody ==> n_hs_keybody
+  n_s_print ==> n_hs_print
+  n_s_claim ==> n_hs_fallback
+  n_s_announce ==> n_hs_fallback
+  n_s_fill ==> n_hs_fallback
+  n_s_family ==> n_hs_fallback
+  n_s_nesting ==> n_hs_fallback
+  n_s_validated ==> n_hs_fallback
+  n_s_read ==> n_hs_fallback
+  n_s_active ==>|"not null"| n_hs_session
+  n_env_policy -.-> n_hs_policy
+  n_hs_policy -.-> n_hs_session
+  n_hs_start -.->|"policy Some -#gt; Session"| n_hs_session
+  n_hs_session -.->|"own"| n_hs_marks
+  n_hs_session -.-> n_hs_census
+  n_env_census -.-> n_hs_census
+  n_hs_defer -.->|"creates"| n_hs_body
+  n_hs_defer -.->|"'globals' marker"| n_hs_marks
+  n_hs_defer -.->|"Parallel"| n_e_spawn
+  n_hs_defer -.->|"queued (BFS / Seeded)"| n_hs_drain
+  n_hs_body -.->|"save / zero / restore"| n_adapter
+  n_hs_body -->|"evaluate body_env"| n_termscope
+  n_hs_keyhit -.-> n_hs_marks
+  n_hs_keybody -.->|"'key-#lt;label#gt;'"| n_hs_marks
+  n_hs_print -.->|"'print'"| n_hs_marks
+  n_hs_root -.->|"Parallel -#gt; new"| n_e_engine
+  n_hs_root --> n_hs_drain
+  n_hs_root -.-> n_e_check
+  n_hs_root --> n_hs_finish
+  n_hs_root -.-> n_e_close
+  n_hs_drain -.-> n_e_drain
+  n_hs_finish -.->|"merge all contexts"| n_hs_marks
+  n_hs_finish -.->|"rebuild_index"| n_gindex
+  n_hs_finish -.->|"rewrites in canonical order"| n_globals
+  n_hs_restart -.->|"catches"| n_e_conflict
+  n_hs_restart -->|"rerun with inline_restart = true"| n_peval
+  n_hs_start -.->|"inline_restart -#gt; null session = single-flight semantics"| n_sf_start
+  n_hs_fallback -.->|"same code when engine = null"| n_sf_claim
+  n_hs_fallback -.->|"Utils.memoize"| n_sf_family
+  n_hs_fallback -.-> n_sf_fill
+  n_hs_fallback -.-> n_sf_validated
+  n_hs_fallback -.->|"engine.Claim"| n_e_claim
+  n_hs_fallback -.->|"engine.Fill"| n_e_fill
+  n_hs_fallback -.->|"engine.Announce"| n_e_announce
+  n_hs_fallback -.->|"engine.Family"| n_e_family
+  n_hs_fallback -.->|"engine.Validated"| n_e_validated
+  n_hs_fallback -.->|"engine.Read"| n_e_read
+  n_hs_fallback -.->|"Context.Nesting"| n_c_ctx
+  n_env_workers -.-> n_e_engine
+  n_env_gap -.->|"1 thread"| n_e_engine
+  n_env_stats -.-> n_e_close
+  n_env_force -.-> n_e_check
+  n_e_engine -.-> n_e_control
+  n_e_engine -.-> n_e_threads
+  n_e_engine -.-> n_t_table
+  n_e_engine -.-> n_g_graph
+  n_e_engine -.-> n_w_list
+  n_e_engine -.-> n_c_tl
+  n_e_engine --> n_e_stack
+  n_e_threads --> n_e_loop
+  n_e_threads --> n_e_stack
+  n_e_loop -.->|"Take"| n_w_ch
+  n_e_loop -->|"runs"| n_hs_body
+  n_e_loop -->|"finally"| n_e_abandon
+  n_e_loop -.->|"sets"| n_c_ctx
+  n_e_claim -.->|"Ready / Chain"| n_c_ctx
+  n_e_claim -.->|"snapshot read"| n_t_published
+  n_e_claim --> n_e_settle
+  n_e_validated --> n_e_settle
+  n_e_read -.->|"Ready only"| n_c_ctx
+  n_e_settle -->|"ClaimOp"| n_e_ask
+  n_e_settle -->|"on Wait"| n_e_await
+  n_e_await -.->|"AddEdge / RemoveEdge"| n_g_ch
+  n_e_await -.->|"cycle"| n_e_conflict
+  n_e_fill -->|"FillOp"| n_e_ask
+  n_e_announce -->|"AnnounceOp"| n_e_ask
+  n_e_family -->|"FamilyOp"| n_e_ask
+  n_e_family -.->|"local table"| n_c_ctx
+  n_e_abandon -->|"AbandonOp"| n_e_ask
+  n_e_spawn -.->|"Spawn"| n_w_ch
+  n_e_drain -.->|"Drain"| n_w_ch
+  n_e_close -.->|"Stop"| n_w_ch
+  n_e_check -.->|"CountCycles"| n_g_ch
+  n_e_check -.->|"Conflicts"| n_t_guard
+  n_e_check -.-> n_e_conflict
+  n_e_ask --> n_e_bridge
+  n_e_ask -.->|"modifyFun"| n_t_guard
+  n_e_bridge -.->|"Scheduler.run"| n_e_control
+  n_t_guard -.-> n_t_decide
+  n_t_decide -.-> n_t_entry
+  n_t_decide -.-> n_t_ops
+  n_t_decide -.-> n_t_replies
+  n_t_decide -.->|"publish"| n_t_published
+  n_t_entry -.-> n_t_state
+  n_t_table -.-> n_t_decide
+  n_g_ch -.->|"Handle"| n_g_graph
+  n_g_graph -.-> n_g_req
+  n_w_ch -.->|"Handle"| n_w_list
+  n_w_list -.-> n_w_req
+  n_w_list --> n_w_settle
+  n_c_tl -.-> n_c_ctx
+  n_c_ctx -.->|"same Marks type as the session"| n_hs_marks
+  n_t_decide -.->|"keys are (table, ConsedNode)"| n_hashcons
+  n_d_order -.-> n_sf_defer
+  n_d_order -.-> n_hs_defer
+  n_d_order -.-> n_hs_finish
+  n_d_err -.-> n_sf_root
+  n_d_err -.-> n_hs_body
+  n_d_print -.-> n_sf_print
+  n_d_print -.-> n_hs_print
+  n_d_rec -.-> n_sf_claim
+  n_d_rec -.-> n_e_announce
+  n_d_conf -.-> n_sf_restart
+  n_d_conf -.-> n_hs_restart
+  n_d_nest -.-> n_sf_nesting
+  n_d_nest -.-> n_c_ctx
+  n_d_globals -.-> n_sf_active
+  n_d_globals -.-> n_bswitch
+  n_d_same -.-> n_result
+  n_env_define -.->|"-Mode single-flight"| n_sf_session
+  n_env_define -.->|"-Mode hopacsota"| n_hs_session
+  n_env_if -.-> n_dynif
+  n_env_union -.-> n_unionnest
+  linkStyle 0 stroke:#263238,stroke-width:3.0px
+  linkStyle 1 stroke:#263238,stroke-width:3.0px
+  linkStyle 2 stroke:#263238,stroke-width:3.0px
+  linkStyle 3 stroke:#263238,stroke-width:3.0px
+  linkStyle 4 stroke:#263238,stroke-width:3.0px
+  linkStyle 5 stroke:#263238,stroke-width:3.0px
+  linkStyle 6 stroke:#263238,stroke-width:3.0px
+  linkStyle 7 stroke:#263238,stroke-width:3.0px
+  linkStyle 8 stroke:#263238,stroke-width:3.0px
+  linkStyle 9 stroke:#263238,stroke-width:3.0px
+  linkStyle 10 stroke:#263238,stroke-width:3.0px
+  linkStyle 11 stroke:#263238,stroke-width:3.0px
+  linkStyle 12 stroke:#263238,stroke-width:3.0px
+  linkStyle 13 stroke:#263238,stroke-width:3.0px
+  linkStyle 14 stroke:#263238,stroke-width:3.0px
+  linkStyle 15 stroke:#263238,stroke-width:3.0px
+  linkStyle 16 stroke:#263238,stroke-width:3.0px
+  linkStyle 17 stroke:#263238,stroke-width:3.0px
+  linkStyle 18 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 19 stroke:#263238,stroke-width:3.0px
+  linkStyle 20 stroke:#263238,stroke-width:3.0px
+  linkStyle 21 stroke:#263238,stroke-width:3.0px
+  linkStyle 22 stroke:#263238,stroke-width:3.0px
+  linkStyle 23 stroke:#263238,stroke-width:3.0px
+  linkStyle 24 stroke:#263238,stroke-width:3.0px
+  linkStyle 25 stroke:#263238,stroke-width:3.0px
+  linkStyle 26 stroke:#263238,stroke-width:3.0px
+  linkStyle 27 stroke:#263238,stroke-width:3.0px
+  linkStyle 28 stroke:#263238,stroke-width:3.0px
+  linkStyle 29 stroke:#263238,stroke-width:3.0px
+  linkStyle 30 stroke:#263238,stroke-width:3.0px
+  linkStyle 31 stroke:#263238,stroke-width:3.0px
+  linkStyle 32 stroke:#263238,stroke-width:3.0px
+  linkStyle 33 stroke:#263238,stroke-width:3.0px
+  linkStyle 34 stroke:#263238,stroke-width:3.0px
+  linkStyle 35 stroke:#263238,stroke-width:3.0px
+  linkStyle 36 stroke:#263238,stroke-width:3.0px
+  linkStyle 37 stroke:#263238,stroke-width:3.0px
+  linkStyle 38 stroke:#263238,stroke-width:3.0px
+  linkStyle 39 stroke:#263238,stroke-width:3.0px
+  linkStyle 40 stroke:#263238,stroke-width:3.0px
+  linkStyle 41 stroke:#263238,stroke-width:3.0px
+  linkStyle 42 stroke:#263238,stroke-width:3.0px
+  linkStyle 43 stroke:#263238,stroke-width:3.0px
+  linkStyle 44 stroke:#263238,stroke-width:3.0px
+  linkStyle 45 stroke:#263238,stroke-width:3.0px
+  linkStyle 46 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 47 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 48 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 49 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 50 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 51 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 52 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 53 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 54 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 55 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 56 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 57 stroke:#00897B,stroke-width:1.5px
+  linkStyle 58 stroke:#00897B,stroke-width:1.5px
+  linkStyle 59 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 60 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 61 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 62 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 63 stroke:#AD1457,stroke-width:2.5px
+  linkStyle 64 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 65 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 66 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 67 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 68 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 69 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 70 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 71 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 72 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 73 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 74 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 75 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 76 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 77 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 78 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 79 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 80 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 81 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 82 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 83 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 84 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 85 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 86 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 87 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 88 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 89 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 90 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 91 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 92 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 93 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 94 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 95 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 96 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 97 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 98 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 99 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 100 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 101 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 102 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 103 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 104 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 105 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 106 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 107 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 108 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 109 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 110 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 111 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 112 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 113 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 114 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 115 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 116 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 117 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 118 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 119 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 120 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 121 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 122 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 123 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 124 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 125 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 126 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 127 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 128 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 129 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 130 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 131 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 132 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 133 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 134 stroke:#2E7D32,stroke-width:3.0px
+  linkStyle 135 stroke:#2E7D32,stroke-width:3.0px
+  linkStyle 136 stroke:#2E7D32,stroke-width:3.0px
+  linkStyle 137 stroke:#2E7D32,stroke-width:3.0px
+  linkStyle 138 stroke:#2E7D32,stroke-width:3.0px
+  linkStyle 139 stroke:#2E7D32,stroke-width:3.0px
+  linkStyle 140 stroke:#2E7D32,stroke-width:3.0px
+  linkStyle 141 stroke:#2E7D32,stroke-width:3.0px
+  linkStyle 142 stroke:#2E7D32,stroke-width:3.0px
+  linkStyle 143 stroke:#2E7D32,stroke-width:3.0px
+  linkStyle 144 stroke:#2E7D32,stroke-width:3.0px
+  linkStyle 145 stroke:#2E7D32,stroke-width:3.0px
+  linkStyle 146 stroke:#2E7D32,stroke-width:3.0px
+  linkStyle 147 stroke:#2E7D32,stroke-width:3.0px
+  linkStyle 148 stroke:#2E7D32,stroke-width:3.0px
+  linkStyle 149 stroke:#2E7D32,stroke-width:3.0px
+  linkStyle 150 stroke:#AD1457,stroke-width:2.5px
+  linkStyle 151 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 152 stroke:#E65100,stroke-width:3.0px
+  linkStyle 153 stroke:#E65100,stroke-width:3.0px
+  linkStyle 154 stroke:#E65100,stroke-width:3.0px
+  linkStyle 155 stroke:#E65100,stroke-width:3.0px
+  linkStyle 156 stroke:#E65100,stroke-width:3.0px
+  linkStyle 157 stroke:#E65100,stroke-width:3.0px
+  linkStyle 158 stroke:#E65100,stroke-width:3.0px
+  linkStyle 159 stroke:#E65100,stroke-width:3.0px
+  linkStyle 160 stroke:#E65100,stroke-width:3.0px
+  linkStyle 161 stroke:#E65100,stroke-width:3.0px
+  linkStyle 162 stroke:#E65100,stroke-width:3.0px
+  linkStyle 163 stroke:#E65100,stroke-width:3.0px
+  linkStyle 164 stroke:#E65100,stroke-width:3.0px
+  linkStyle 165 stroke:#E65100,stroke-width:3.0px
+  linkStyle 166 stroke:#E65100,stroke-width:3.0px
+  linkStyle 167 stroke:#E65100,stroke-width:3.0px
+  linkStyle 168 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 169 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 170 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 171 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 172 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 173 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 174 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 175 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 176 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 177 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 178 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 179 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 180 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 181 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 182 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 183 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 184 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 185 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 186 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 187 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 188 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 189 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 190 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 191 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 192 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 193 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 194 stroke:#AD1457,stroke-width:2.5px
+  linkStyle 195 stroke:#AD1457,stroke-width:2.5px
+  linkStyle 196 stroke:#AD1457,stroke-width:2.5px
+  linkStyle 197 stroke:#AD1457,stroke-width:2.5px
+  linkStyle 198 stroke:#AD1457,stroke-width:2.5px
+  linkStyle 199 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 200 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 201 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 202 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 203 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 204 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 205 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 206 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 207 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 208 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 209 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 210 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 211 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 212 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 213 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 214 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 215 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 216 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 217 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 218 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 219 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 220 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 221 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 222 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 223 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 224 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 225 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 226 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 227 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 228 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 229 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 230 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 231 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 232 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 233 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 234 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 235 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 236 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 237 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 238 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 239 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 240 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 241 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 242 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 243 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 244 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 245 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 246 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 247 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 248 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 249 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 250 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 251 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 252 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 253 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 254 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 255 stroke:#BF360C,stroke-width:1.8px
+  linkStyle 256 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 257 stroke:#1565C0,stroke-width:1.5px
+  linkStyle 258 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 259 stroke:#AD1457,stroke-width:2.5px
+  linkStyle 260 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 261 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 262 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 263 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 264 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 265 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 266 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 267 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 268 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 269 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 270 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 271 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 272 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 273 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 274 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 275 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 276 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 277 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 278 stroke:#F9A825,stroke-width:1.5px
+  linkStyle 279 stroke:#9E9E9E,stroke-width:1.0px
+  linkStyle 280 stroke:#9E9E9E,stroke-width:1.0px
+  classDef c_FFF6D5_8D6E63 fill:#FFF6D5,stroke:#8D6E63,color:#000000
+  classDef c_FAFAFA_616161 fill:#FAFAFA,stroke:#616161,color:#000000
+  classDef c_EEEEEE_424242 fill:#EEEEEE,stroke:#424242,color:#000000
+  classDef c_B2DFDB_00695C fill:#B2DFDB,stroke:#00695C,color:#000000
+  classDef c_E1BEE7_6A1B9A fill:#E1BEE7,stroke:#6A1B9A,color:#000000
+  classDef c_37474F_000000 fill:#37474F,stroke:#000000,color:#FFFFFF
+  classDef c_EDE7F6_5E35B1 fill:#EDE7F6,stroke:#5E35B1,color:#000000
+  classDef c_BBDEFB_0D47A1 fill:#BBDEFB,stroke:#0D47A1,color:#000000
+  classDef c_C8E6C9_1B5E20 fill:#C8E6C9,stroke:#1B5E20,color:#000000
+  classDef c_ECEFF1_455A64 fill:#ECEFF1,stroke:#455A64,color:#000000
+  classDef c_FFFFFF_212121 fill:#FFFFFF,stroke:#212121,color:#000000
+  classDef c_FFE0B2_BF360C fill:#FFE0B2,stroke:#BF360C,color:#000000
+  classDef c_FFCDD2_B71C1C fill:#FFCDD2,stroke:#B71C1C,color:#000000
+  classDef c_FFFDE7_F9A825 fill:#FFFDE7,stroke:#F9A825,color:#000000
+  classDef c_E3F2FD_1565C0 fill:#E3F2FD,stroke:#1565C0,color:#000000

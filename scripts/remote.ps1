@@ -67,7 +67,7 @@ function Resolve-MachineAddress {
     if (Test-Path $addressCache) {
         $cached = (Get-Content $addressCache -TotalCount 1).Trim()
         if ($cached) {
-            ssh -o "HostName=$cached" -o ConnectTimeout=8 $target.sshAlias "exit 0" 2>$null | Out-Null
+            ssh -o "HostName=$cached" -o ConnectTimeout=8 -o BatchMode=yes -o ServerAliveInterval=5 -o ServerAliveCountMax=2 $target.sshAlias "exit 0" 2>$null | Out-Null
             if ($LASTEXITCODE -eq 0) { $script:machineAddress = $cached; return $cached }
         }
         $candidates.Add($cached)
@@ -90,7 +90,7 @@ function Resolve-MachineAddress {
 
 function ConvertTo-PwshLiteral([string] $text) { "'" + $text.Replace("'", "''") + "'" }
 
-function Get-HostOption([string] $address) { if ($address) { @('-o', "HostName=$address") } else { @() } }
+function Get-HostOption([string] $address) { @('-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4') + $(if ($address) { @('-o', "HostName=$address") } else { @() }) }
 
 function Invoke-Remote([string] $command) {
     $address = Resolve-MachineAddress

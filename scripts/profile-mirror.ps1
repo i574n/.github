@@ -13,6 +13,7 @@ $heavyFolders = '\\(lib\\spiral|mix-build|_build|node_modules|target|deps|\.cach
 $wholeTrees = @(
     (Join-Path $claude 'projects'),
     (Join-Path $claude 'hooks'),
+    (Join-Path $claude 'subagent-hold'),
     (Join-Path $claude 'autonomous'),
     (Join-Path $env:LOCALAPPDATA 'kit\backups'),
     (Join-Path $env:LOCALAPPDATA 'kit\jobs'),
@@ -67,6 +68,14 @@ $bytes = ($files | ForEach-Object { (Get-Item -LiteralPath $_ -Force -ErrorActio
 "profile-mirror: $($files.Count) files, $([Math]::Round($bytes / 1MB, 1)) MB"
 if ($DryRun) { return }
 
+# Self-clean stale staging on ENTRY, not only on success: a run that is memory-killed or times out mid-tar
+# (common on a saturated box) leaves its ~1 GB $work snapshot behind, and those accumulate into multi-GB TEMP
+# bloat that worsens the very disk/IO pressure causing the kills (2026-11-01: 5 dead dirs, ~6 GB). The overlap
+# guard already bars a concurrent run, so any profile-mirror-* dir >60 min old is dead staging, safe to reclaim.
+foreach ($stale in @(Get-ChildItem $env:TEMP -Directory -Filter 'profile-mirror-*' -ErrorAction SilentlyContinue | Where-Object { ((Get-Date) - $_.LastWriteTime).TotalMinutes -gt 60 })) {
+    Remove-Item -LiteralPath $stale.FullName -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $work = Join-Path $env:TEMP "profile-mirror-$stamp"
 New-Item -ItemType Directory -Force $work | Out-Null
@@ -93,11 +102,11 @@ function ConvertTo-EncodedCommand([string] $script) { [Convert]::ToBase64String(
 $reached = $null
 $makeDir = ConvertTo-EncodedCommand "New-Item -ItemType Directory -Force '$RemoteDir' | Out-Null"
 foreach ($route in $Routes) {
-    ssh -o ConnectTimeout=8 $route "pwsh -NoProfile -EncodedCommand $makeDir" 2>$null
+    ssh -o ConnectTimeout=8 -o ServerAliveInterval=15 -o ServerAliveCountMax=4$route "pwsh -NoProfile -EncodedCommand $makeDir" 2>$null
     if ($LASTEXITCODE -eq 0) { $reached = $route; break }
 }
 if (-not $reached) { throw "profile-mirror: no route reached the node ($($Routes -join ', ')); the archive stays at $archive" }
-scp -q $archive "${reached}:$RemoteDir/"
+scp -q -o ConnectTimeout=8 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 $archive "${reached}:$RemoteDir/"
 if ($LASTEXITCODE -ne 0) { throw "profile-mirror: scp failed over $reached; the archive stays at $archive" }
 $localSize = (Get-Item $archive).Length
 # Node-side (fail-loud): size+entry verify of the landed tgz, previous-newest staleness age, TIERED retention
@@ -125,7 +134,7 @@ $remoteScript = @"
 Set-Content (Join-Path `$dir 'profile-mirror-status.txt') "unix=`$unix stale_after_s=7200 newest=`$leaf kept=`$kept sha256=$hash"
 "`$size `$entries `$prevAgeMin `$kept `$(`$pruned.Count)"
 "@
-$remote = (ssh -o ConnectTimeout=8 $reached "pwsh -NoProfile -EncodedCommand $(ConvertTo-EncodedCommand $remoteScript)" 2>$null | Select-Object -Last 1) -split '\s+'
+$remote = (ssh -o ConnectTimeout=8 -o ServerAliveInterval=15 -o ServerAliveCountMax=4$reached "pwsh -NoProfile -EncodedCommand $(ConvertTo-EncodedCommand $remoteScript)" 2>$null | Select-Object -Last 1) -split '\s+'
 if ($remote.Count -lt 2 -or [long]$remote[0] -ne $localSize -or [int]$remote[1] -ne $entries) { throw "profile-mirror: node verify mismatch (local $localSize B/$entries entries, node $($remote[0]) B/$($remote[1]) entries); the archive stays at $archive" }
 $prevAgeMin = [int]$remote[2]; $kept = [int]$remote[3]; $prunedCount = [int]$remote[4]
 if ($prevAgeMin -gt 120) { "profile-mirror: STALE WARNING - previous newest node tgz was ${prevAgeMin}min old (>120); prior scheduled runs were silently failing" }

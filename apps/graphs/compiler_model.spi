@@ -1,0 +1,1064 @@
+:< sm'_operators
+:< graph
+
+:| region =
+    | RWhole
+    | RInfra
+    | RFront
+    | RProj
+    | RTyping
+    | RPrep
+    | RPe
+    | RPeTables
+    | RPeOps
+    | RPeGuards
+    | RSeams
+    | RSf
+    | RHs
+    | RHsSeams
+    | RHsEngine
+    | RHsTable
+    | RHsGraph
+    | RHsWork
+    | RHsCtx
+    | RDiverge
+    | RCodegen
+    | RBackends
+    | RServer
+    | REnv
+
+:~ info_of_region (r : region) : region_info region =
+    ?= r ?|
+    | RWhole => { key = "whole"; parent = TopLevel; title = "spiral_compiler.fs (35,585 lines, 912 sections)"; subtitle = "apps/compiler: one F# file = the whole compiler core" }
+    | RInfra => { key = "infra"; parent = Under (RWhole); title = "Shared infrastructure"; subtitle = "used by every phase, both builds" }
+    | RFront => { key = "front"; parent = Under (RWhole); title = "Front end"; subtitle = "text -> tokens -> blocks -> AST bundles" }
+    | RProj => { key = "proj"; parent = Under (RWhole); title = "Projects & incremental (WDiff / SpiProj)"; subtitle = "Hopac promises, dirty-node recompute" }
+    | RTyping => { key = "typing"; parent = Under (RWhole); title = "Type inference"; subtitle = "Infer + adapters" }
+    | RPrep => { key = "prep"; parent = Under (RWhole); title = "Prepass"; subtitle = "lowering to the evaluable core" }
+    | RPe => { key = "pe"; parent = Under (RWhole); title = "Partial evaluation core (PartEval, L8930-12004)"; subtitle = "the SAME code in both builds; every concurrency-sensitive step goes through PartEvalSeams" }
+    | RPeTables => { key = "pe_tables"; parent = Under (RPe); title = "peval state (per build)"; subtitle = "memo tables keyed by hash-consed join point keys" }
+    | RPeOps => { key = "pe_ops"; parent = Under (RPe); title = "peval operations that touch the seams"; subtitle = "35 call sites" }
+    | RPeGuards => { key = "pe_guards"; parent = Under (RPe); title = "Runaway guards & thread-local state"; subtitle = "what a parallel body must save/restore" }
+    | RSeams => { key = "seams"; parent = Under (RWhole); title = "PartEvalSeams API (identical signatures in both builds)"; subtitle = "Adapter<'env> + Session<'env> + 16 operations" }
+    | RSf => { key = "sf"; parent = Under (RWhole); title = "SINGLE-FLIGHT build (#else branch, L8892-8928)"; subtitle = "every seam is an F# inline function: zero cost, depth-first, one thread" }
+    | RHs => { key = "hs"; parent = Under (RWhole); title = "HOPACSOTA build (#if SPIRAL_CORE_HOPACSOTA, L8241-8890)"; subtitle = "the single-flight core + a parallel layer" }
+    | RHsSeams => { key = "hs_seams"; parent = Under (RHs); title = "PartEvalSeams (hopacsota, L8660-8890)"; subtitle = "Session: policy, deferral, markers, canonical replay" }
+    | RHsEngine => { key = "hs_engine"; parent = Under (RHs); title = "PartEvalEngine (L8243-8657)"; subtitle = "Hopac-mediated claim table on dedicated 1.5 GB body threads" }
+    | RHsTable => { key = "hs_table"; parent = Under (RHsEngine); title = "Table: the single source of truth for keys"; subtitle = "serialized behind MVar<Table>" }
+    | RHsGraph => { key = "hs_graph"; parent = Under (RHsEngine); title = "Graph: wait-for edges"; subtitle = "deadlock detection" }
+    | RHsWork => { key = "hs_work"; parent = Under (RHsEngine); title = "Worklist: body scheduling"; subtitle = "tokens = workers - 1" }
+    | RHsCtx => { key = "hs_ctx"; parent = Under (RHsEngine); title = "Per-thread BodyContext"; subtitle = "ThreadLocal, one per body thread + root" }
+    | RDiverge => { key = "diverge"; parent = Under (RWhole); title = "How the two builds diverge"; subtitle = "same inputs, same output text, different journeys" }
+    | RCodegen => { key = "codegen"; parent = Under (RWhole); title = "Code generation (19 backends)"; subtitle = "reads the peval result tables" }
+    | RBackends => { key = "backends"; parent = Under (RCodegen); title = "Backends"; subtitle = "build_many / build dispatch (L35115)" }
+    | RServer => { key = "server"; parent = Under (RWhole); title = "Supervisor, server & entry points"; subtitle = "where a build starts" }
+    | REnv => { key = "env"; parent = Under (RWhole); title = "Environment switches"; subtitle = "read once at startup" }
+
+:~ regions () : list region =
+    [ RWhole; RInfra; RFront; RProj; RTyping; RPrep; RPe; RPeTables; RPeOps; RPeGuards; RSeams; RSf; RHs; RHsSeams; RHsEngine; RHsTable; RHsGraph; RHsWork; RHsCtx; RDiverge; RCodegen; RBackends; RServer; REnv ]
+
+:| infra_part =
+    | NHashcons
+    | NConsed
+    | NStriped
+    | NMemoize
+    | NHopacext
+    | NPvec
+    | NParsec
+    | NIdadapter
+    | NHopaclib
+
+:~ info_of_infra (p : infra_part) : part_info region =
+    ?= p ?|
+    | NHashcons => { key = "hashcons"; region = RInfra; kind = Data; title = "HashConsTable (L153)"; detail = "weak-ref buckets; Add under lock sync_root -> thread-safe for hopacsota" }
+    | NConsed => { key = "consed"; region = RInfra; kind = Data; title = "ConsedNode<'a> (L131)"; detail = "equality by tag; join point keys are ConsedNodes" }
+    | NStriped => { key = "striped"; region = RInfra; kind = Data; title = "StripedHashConsTable (L221)"; detail = "32 shards, Fibonacci hashing (MIGRATION, not wired into peval)" }
+    | NMemoize => { key = "memoize"; region = RInfra; kind = Fn; title = "Utils.memoize (L351)"; detail = "Dictionary memo; single-flight family = memoize" }
+    | NHopacext => { key = "hopacext"; region = RInfra; kind = Fn; title = "HopacExtensions (L3794)"; detail = "Hopac Job/Promise/Stream helpers (both builds)" }
+    | NPvec => { key = "pvec"; region = RInfra; kind = Fn; title = "PersistentVector ext. (L46)"; detail = "immutable vectors for WDiff" }
+    | NParsec => { key = "parsec"; region = RInfra; kind = Fn; title = "ParserCombinators (L381)"; detail = "tuple/pipe/many/choice combinators" }
+    | NIdadapter => { key = "idadapter"; region = RInfra; kind = Fn; title = "IdentityAdapter (L11)"; detail = "name ids are strings in this core" }
+    | NHopaclib => { key = "hopaclib"; region = RInfra; kind = Ext; title = "Hopac library"; detail = "Job, Ch, IVar, MVar, Promise, Scheduler" }
+
+:| front_part =
+    | NStartup
+    | NTokenize
+    | NBlocksplit
+    | NBlockparse
+    | NBundle
+    | NFormatter
+
+:~ info_of_front (p : front_part) : part_info region =
+    ?= p ?|
+    | NStartup => { key = "startup"; region = RFront; kind = Fn; title = "Startup / CliArguments (L250)"; detail = "Argu parse, DefaultEnv, PrimitiveType" }
+    | NTokenize => { key = "tokenize"; region = RFront; kind = Fn; title = "Tokenize (L870)"; detail = "LexState, token, vscode_tokens, semantic legend" }
+    | NBlocksplit => { key = "blocksplit"; region = RFront; kind = Fn; title = "BlockSplitting (L1629)"; detail = "block_at / block_all / wdiff_block_all" }
+    | NBlockparse => { key = "blockparse"; region = RFront; kind = Fn; title = "BlockParsing (L1703)"; detail = "top_statement, patterns, OrPatternJoin, operators" }
+    | NBundle => { key = "bundle"; region = RFront; kind = Fn; title = "BlockBundling (L3855)"; detail = "bundle_blocks, wdiff_block_bundle" }
+    | NFormatter => { key = "formatter"; region = RFront; kind = Fn; title = "Formatter (L29325)"; detail = "4,180 lines, standalone" }
+
+:| proj_part =
+    | NSpiproj
+    | NWdiff
+    | NWdiffprep
+    | NGraph
+    | NLoader
+
+:~ info_of_proj (p : proj_part) : part_info region =
+    ?= p ?|
+    | NSpiproj => { key = "spiproj"; region = RProj; kind = Fn; title = "SpiProj (L28785)"; detail = "package.spiproj / TOML schema, derived modules" }
+    | NWdiff => { key = "wdiff"; region = RProj; kind = Fn; title = "WDiff (L27901)"; detail = "tokenizer/parse/module/file/proj diffs; typecheck funs" }
+    | NWdiffprep => { key = "wdiffprep"; region = RProj; kind = Fn; title = "WDiffPrepass (L28620)"; detail = "incremental prepass per file/package" }
+    | NGraph => { key = "graph"; region = RProj; kind = Fn; title = "Graph (L33525)"; detail = "MirroredGraph, topological_sort, circular_nodes" }
+    | NLoader => { key = "loader"; region = RProj; kind = Fn; title = "ServerUtils loader (L33645)"; detail = "loader_package, dirty_nodes_tc/prepass, schema state" }
+
+:| typing_part =
+    | NInfer
+    | NInferadapter
+    | NInlinedepth
+    | NTypeerr
+
+:~ info_of_typing (p : typing_part) : part_info region =
+    ?= p ?|
+    | NInfer => { key = "infer"; region = RTyping; kind = Fn; title = "Infer (L4193)"; detail = "infer, TopEnv, FilledTop Hopac.Promise" }
+    | NInferadapter => { key = "inferadapter"; region = RTyping; kind = Seam; title = "InferAdapter (L4187)"; detail = "identity seam: failedDeclaration, module reports" }
+    | NInlinedepth => { key = "inlinedepth"; region = RTyping; kind = Data; title = "InlineDepth (L4147)"; detail = "InlineStackPolicy, InlineRecursionStop" }
+    | NTypeerr => { key = "typeerr"; region = RTyping; kind = Fn; title = "TypeErrorCodes (L4180)"; detail = "type_error_report" }
+
+:| prep_part =
+    | NPrepass
+    | NPrepassadapter
+    | NPrepenv
+
+:~ info_of_prep (p : prep_part) : part_info region =
+    ?= p ?|
+    | NPrepass => { key = "prepass"; region = RPrep; kind = Fn; title = "prepassPrepass (L7783)"; detail = "propagate (L7163) -> resolve (L7301) -> lower (L7424)" }
+    | NPrepassadapter => { key = "prepassadapter"; region = RPrep; kind = Seam; title = "PrepassAdapter (L6742)"; detail = "identity seam: memoPatternRef, visitPatternRefOnce" }
+    | NPrepenv => { key = "prepenv"; region = RPrep; kind = Data; title = "PartEvalPrepassEnv (L7673)"; detail = "add_term / fresh vars / process_term" }
+
+:| pe_part =
+    | NPeval
+    | NTopenv
+    | NLangenv
+    | NResult
+    | NTermscope
+    | NCse
+
+:~ info_of_pe (p : pe_part) : part_info region =
+    ?= p ?|
+    | NPeval => { key = "peval"; region = RPe; kind = Entry; title = "peval env main (L9705)"; detail = "builds the session, the tables and LangEnv; evaluates main" }
+    | NTopenv => { key = "topenv"; region = RPe; kind = Data; title = "PartEvalTopEnv"; detail = "prototypes_instances, nominals, backend, inline_restart" }
+    | NLangenv => { key = "langenv"; region = RPe; kind = Data; title = "LangEnv"; detail = "trace, seq, cse, i, env stacks, backend, globals (ResizeArray<string>)" }
+    | NResult => { key = "result"; region = RPe; kind = Data; title = "PartEvalResult (L9573)"; detail = "join_point_method, join_point_closure, ty_to_data, globals" }
+    | NTermscope => { key = "termscope"; region = RPe; kind = Fn; title = "term / term_scope''"; detail = "the evaluator: one big recursive match over E" }
+    | NCse => { key = "cse"; region = RPe; kind = Fn; title = "push_typedop + CSE"; detail = "cse_tryfind / cse_add on s.cse" }
+
+:| pe_tables_part =
+    | NJpm
+    | NJpc
+    | NJpt
+    | NBsv
+    | NGlobals
+
+:~ info_of_pe_tables (p : pe_tables_part) : part_info region =
+    ?= p ?|
+    | NJpm => { key = "jpm"; region = RPeTables; kind = Data; title = "join_point_method"; detail = "Dictionary<(backend, body), Dictionary<key, (seq option, ty option, name)> * HashConsTable>" }
+    | NJpc => { key = "jpc"; region = RPeTables; kind = Data; title = "join_point_closure"; detail = "Dictionary<(backend, body), Dictionary<key, (domain, seq) option> * HashConsTable>" }
+    | NJpt => { key = "jpt"; region = RPeTables; kind = Data; title = "join_point_type"; detail = "Dictionary<body, Dictionary<key, Ty option> * HashConsTable>" }
+    | NBsv => { key = "bsv"; region = RPeTables; kind = Data; title = "backend_switch_validated"; detail = "Dictionary<(backend, RData[]), Ty> + its HashConsTable" }
+    | NGlobals => { key = "globals"; region = RPeTables; kind = Data; title = "s.globals"; detail = "ordered list of emitted global text; GlobalsIndex keeps a HashSet per list" }
+
+:| pe_ops_part =
+    | NClosure
+    | NTjp
+    | NMjp
+    | NBswitch
+    | NUninh
+    | NPrintst
+    | NMainroot
+
+:~ info_of_pe_ops (p : pe_ops_part) : part_info region =
+    ?= p ?|
+    | NClosure => { key = "closure"; region = RPeOps; kind = Op; title = "closure_convert (L9770)"; detail = "family -> claim -> announce(true) -> key_body \"closure\" -> defer -> fill" }
+    | NTjp => { key = "tjp"; region = RPeOps; kind = Op; title = "type join point TJoinPoint' (L9955)"; detail = "family -> claim -> key_body \"type\" -> ty -> fill (never deferred)" }
+    | NMjp => { key = "mjp"; region = RPeOps; kind = Op; title = "method join point EJoinPoint' (L10380)"; detail = "family -> claim -> announce(annotated?) -> key_body \"method\" -> defer -> fill" }
+    | NBswitch => { key = "bswitch"; region = RPeOps; kind = Op; title = "BackendSwitch validation (L10844)"; detail = "validated -> read | key_body \"bsv\" -> apply -> fill" }
+    | NUninh => { key = "uninh"; region = RPeOps; kind = Op; title = "is_uninhabited (L9939)"; detail = "nesting counter, limit 32" }
+    | NPrintst => { key = "printst"; region = RPeOps; kind = Op; title = "PrintStatic / PrintRaw (L11775)"; detail = "print seam" }
+    | NMainroot => { key = "mainroot"; region = RPeOps; kind = Op; title = "main entry (L12001)"; detail = "root globals (term_scope main ())" }
+
+:| pe_guards_part =
+    | NRunaway
+    | NDynif
+    | NUnionnest
+    | NGindex
+    | NRustgap
+
+:~ info_of_pe_guards (p : pe_guards_part) : part_info region =
+    ?= p ?|
+    | NRunaway => { key = "runaway"; region = RPeGuards; kind = Fn; title = "RunawayUnrollDiagnostic (L9585)"; detail = "Rust-style report; ConcurrentDictionary of source lines" }
+    | NDynif => { key = "dynif"; region = RPeGuards; kind = Data; title = "DynamicIfNesting (L9646)"; detail = "ThreadLocal depth, SPIRAL_IF_NESTING_LIMIT=1000" }
+    | NUnionnest => { key = "unionnest"; region = RPeGuards; kind = Data; title = "UnionNesting (L9653)"; detail = "ThreadLocal depth, limit 256, EJP0041" }
+    | NGindex => { key = "gindex"; region = RPeGuards; kind = Data; title = "GlobalsIndex (L9666)"; detail = "ConditionalWeakTable<list, HashSet>" }
+    | NRustgap => { key = "rustgap"; region = RPeGuards; kind = Data; title = "RustGapTrace (L9674)"; detail = "ThreadLocal validating; ConcurrentDictionary of missing arms" }
+
+:| seams_part =
+    | NAdapter
+    | NSSession
+    | NSClaimty
+    | NSStart
+    | NSRestart
+    | NSRoot
+    | NSDefer
+    | NSClaim
+    | NSAnnounce
+    | NSFill
+    | NSFamily
+    | NSKeyhit
+    | NSKeybody
+    | NSPrint
+    | NSNesting
+    | NSValidated
+    | NSRead
+    | NSActive
+
+:~ info_of_seams (p : seams_part) : part_info region =
+    ?= p ?|
+    | NAdapter => { key = "adapter"; region = RSeams; kind = Type; title = "Adapter<'env>"; detail = "globals, with_globals, dynamic_if/set, validating/set, rebuild_index" }
+    | NSSession => { key = "s_session"; region = RSeams; kind = Type; title = "Session<'env>"; detail = "single-flight: Inline   |   hopacsota: class or null" }
+    | NSClaimty => { key = "s_claimty"; region = RSeams; kind = Type; title = "Claim<'v> = Found 'v"; detail = "Owner | who evaluates a key" }
+    | NSStart => { key = "s_start"; region = RSeams; kind = Api; title = "start_for inline_restart adapter"; detail = "open a session for this peval" }
+    | NSRestart => { key = "s_restart"; region = RSeams; kind = Api; title = "with_conflict_restart f"; detail = "f false, or f true after a conflict" }
+    | NSRoot => { key = "s_root"; region = RSeams; kind = Api; title = "root session globals f"; detail = "run main, then settle" }
+    | NSDefer => { key = "s_defer"; region = RSeams; kind = Api; title = "defer session s relative deferred evaluate"; detail = "evaluate a join point body now or later" }
+    | NSClaim => { key = "s_claim"; region = RSeams; kind = Api; title = "claim session table key pending"; detail = "Found value or Owner" }
+    | NSAnnounce => { key = "s_announce"; region = RSeams; kind = Api; title = "announce session usable table key value"; detail = "publish a usable signature early" }
+    | NSFill => { key = "s_fill"; region = RSeams; kind = Api; title = "fill session table key value"; detail = "publish the finished value" }
+    | NSFamily => { key = "s_family"; region = RSeams; kind = Api; title = "family session outer create key"; detail = "per-(backend, body) inner table" }
+    | NSKeyhit => { key = "s_keyhit"; region = RSeams; kind = Api; title = "key_hit session key s"; detail = "a reuse of a finished key" }
+    | NSKeybody => { key = "s_keybody"; region = RSeams; kind = Api; title = "key_body session key label s"; detail = "the env that evaluates a key's body" }
+    | NSPrint => { key = "s_print"; region = RSeams; kind = Api; title = "print session s text"; detail = "compile-time printing" }
+    | NSNesting => { key = "s_nesting"; region = RSeams; kind = Api; title = "nesting session shared"; detail = "which counter is_uninhabited uses" }
+    | NSValidated => { key = "s_validated"; region = RSeams; kind = Api; title = "validated session table key"; detail = "backend switch type already known?" }
+    | NSRead => { key = "s_read"; region = RSeams; kind = Api; title = "read session table key"; detail = "read a validated type" }
+    | NSActive => { key = "s_active"; region = RSeams; kind = Api; title = "active session"; detail = "is a parallel session running?" }
+
+:| sf_part =
+    | NSfSession
+    | NSfStart
+    | NSfRestart
+    | NSfRoot
+    | NSfDefer
+    | NSfClaim
+    | NSfAnnounce
+    | NSfFill
+    | NSfFamily
+    | NSfKeyhit
+    | NSfKeybody
+    | NSfPrint
+    | NSfNesting
+    | NSfValidated
+    | NSfRead
+    | NSfActive
+
+:~ info_of_sf (p : sf_part) : part_info region =
+    ?= p ?|
+    | NSfSession => { key = "sf_session"; region = RSf; kind = Impl; title = "Session = Inline"; detail = "a one-case union; no state at all" }
+    | NSfStart => { key = "sf_start"; region = RSf; kind = Impl; title = "start_for = Inline"; detail = "inline_restart is ignored" }
+    | NSfRestart => { key = "sf_restart"; region = RSf; kind = Impl; title = "with_conflict_restart = f false"; detail = "a conflict cannot happen" }
+    | NSfRoot => { key = "sf_root"; region = RSf; kind = Impl; title = "root = f ()"; detail = "main runs to completion on the build thread" }
+    | NSfDefer => { key = "sf_defer"; region = RSf; kind = Impl; title = "defer = evaluate s"; detail = "the body is evaluated immediately, depth first, in the current env" }
+    | NSfClaim => { key = "sf_claim"; region = RSf; kind = Impl; title = "claim = TryGetValue, else table.[key] <- pending; Owner"; detail = "pending marks 'in progress' for recursion" }
+    | NSfAnnounce => { key = "sf_announce"; region = RSf; kind = Impl; title = "announce = table.[key] <- value"; detail = "just a write" }
+    | NSfFill => { key = "sf_fill"; region = RSf; kind = Impl; title = "fill = table.[key] <- value"; detail = "just a write" }
+    | NSfFamily => { key = "sf_family"; region = RSf; kind = Impl; title = "family = Utils.memoize outer create key"; detail = "one shared inner table" }
+    | NSfKeyhit => { key = "sf_keyhit"; region = RSf; kind = Impl; title = "key_hit = ()"; detail = "no markers" }
+    | NSfKeybody => { key = "sf_keybody"; region = RSf; kind = Impl; title = "key_body = s"; detail = "globals untouched" }
+    | NSfPrint => { key = "sf_print"; region = RSf; kind = Impl; title = "print = printfn"; detail = "printed at the moment of evaluation" }
+    | NSfNesting => { key = "sf_nesting"; region = RSf; kind = Impl; title = "nesting = shared ref"; detail = "one counter per peval" }
+    | NSfValidated => { key = "sf_validated"; region = RSf; kind = Impl; title = "validated = ContainsKey |"; detail = "" }
+    | NSfRead => { key = "sf_read"; region = RSf; kind = Impl; title = "read = table.[key] |"; detail = "" }
+    | NSfActive => { key = "sf_active"; region = RSf; kind = Impl; title = "active = false"; detail = "validation globals come from validation_root_globals" }
+
+:| hs_seams_part =
+    | NHsPolicy
+    | NHsSession
+    | NHsStart
+    | NHsRestart
+    | NHsRoot
+    | NHsDefer
+    | NHsBody
+    | NHsDrain
+    | NHsKeyhit
+    | NHsKeybody
+    | NHsPrint
+    | NHsFinish
+    | NHsCensus
+    | NHsFallback
+    | NHsMarks
+
+:~ info_of_hs_seams (p : hs_seams_part) : part_info region =
+    ?= p ?|
+    | NHsPolicy => { key = "hs_policy"; region = RHsSeams; kind = Cfg; title = "Policy"; detail = "DepthFirst | BreadthFirst | Seeded seed | Parallel; None = inline (no session)" }
+    | NHsSession => { key = "hs_session"; region = RHsSeams; kind = Class; title = "Session<'env>(policy, adapter)"; detail = "queue, own Marks, seeded Random, engine (null unless Parallel), census" }
+    | NHsStart => { key = "hs_start"; region = RHsSeams; kind = Impl; title = "start / start_for"; detail = "inline_restart -> null session; policy None -> null" }
+    | NHsRestart => { key = "hs_restart"; region = RHsSeams; kind = Impl; title = "with_conflict_restart"; detail = "try f false; on HopacsotaConflict: eprintfn ... restart in canonical single-flight order (D4); f true" }
+    | NHsRoot => { key = "hs_root"; region = RHsSeams; kind = Impl; title = "Session.Root"; detail = "Parallel -> new Engine(evaluating_threads); f(); Finished; Drain; census; Check; Finish; Close" }
+    | NHsDefer => { key = "hs_defer"; region = RHsSeams; kind = Impl; title = "Session.Defer"; detail = "BFS/Seeded/Parallel with an annotation: new 'globals' marker + child list, body closure; returns the annotated result at once" }
+    | NHsBody => { key = "hs_body"; region = RHsSeams; kind = Impl; title = "deferred body closure"; detail = "saves/zeroes dynamic_if + validating, evaluate body_env, failure -> 'fail' marker, restores, census row" }
+    | NHsDrain => { key = "hs_drain"; region = RHsSeams; kind = Impl; title = "Session.Drain"; detail = "queue loop (Seeded: random pick) or engine.Drain" }
+    | NHsKeyhit => { key = "hs_keyhit"; region = RHsSeams; kind = Impl; title = "Session.KeyHit"; detail = "appends the key's marker to the caller's globals" }
+    | NHsKeybody => { key = "hs_keybody"; region = RHsSeams; kind = Impl; title = "Session.KeyBody"; detail = "names marker 'key-<label>', new child list, env with that list as globals" }
+    | NHsPrint => { key = "hs_print"; region = RHsSeams; kind = Impl; title = "Session.Print"; detail = "'print' marker; text kept until Finish" }
+    | NHsFinish => { key = "hs_finish"; region = RHsSeams; kind = Impl; title = "Session.Finish"; detail = "merge Marks of every context; walk markers from root; replay prints; first failure wins; dedupe globals; rebuild_index" }
+    | NHsCensus => { key = "hs_census"; region = RHsSeams; kind = Data; title = "census"; detail = "SPIRAL_HOPACSOTA_CENSUS_OUT: body, parent, spawn_at_us, self_us" }
+    | NHsFallback => { key = "hs_fallback"; region = RHsSeams; kind = Impl; title = "seam ops with engine = null"; detail = "claim/fill/announce/family/nesting/validated/read fall back to the single-flight code" }
+    | NHsMarks => { key = "hs_marks"; region = RHsSeams; kind = Data; title = "Marks(prefix)"; detail = "Children, Prints, Failures, Keys; names '\\u0001hopacsota-<kind>-<prefix><n>'" }
+
+:| hs_engine_part =
+    | NEEngine
+    | NEControl
+    | NEBridge
+    | NEAsk
+    | NESettle
+    | NEAwait
+    | NEAbandon
+    | NEStack
+    | NEThreads
+    | NELoop
+    | NEClaim
+    | NEValidated
+    | NERead
+    | NEFill
+    | NEAnnounce
+    | NEFamily
+    | NESpawn
+    | NEDrain
+    | NECheck
+    | NEClose
+    | NEConflict
+
+:~ info_of_hs_engine (p : hs_engine_part) : part_info region =
+    ?= p ?|
+    | NEEngine => { key = "e_engine"; region = RHsEngine; kind = Class; title = "Engine(workers)"; detail = "owns control scheduler, contexts, table, guard, graph, worklist, threads" }
+    | NEControl => { key = "e_control"; region = RHsEngine; kind = Impl; title = "control Scheduler"; detail = "Hopac scheduler with NumWorkers = 1; all coordination runs here" }
+    | NEBridge => { key = "e_bridge"; region = RHsEngine; kind = Impl; title = "bridge op"; detail = "Scheduler.run control op from a body thread; counts Bridges" }
+    | NEAsk => { key = "e_ask"; region = RHsEngine; kind = Impl; title = "ask id op"; detail = "MVar.modifyFun guard (table.Decide), then wake the returned waiters" }
+    | NESettle => { key = "e_settle"; region = RHsEngine; kind = Impl; title = "settle"; detail = "ClaimOp; on Wait -> await -> retry" }
+    | NEAwait => { key = "e_await"; region = RHsEngine; kind = Impl; title = "await"; detail = "AddEdge to Graph; if accepted, read the IVar and RemoveEdge; else HopacsotaConflict" }
+    | NEAbandon => { key = "e_abandon"; region = RHsEngine; kind = Impl; title = "abandon_chain"; detail = "AbandonOp for every key still in the context chain" }
+    | NEStack => { key = "e_stack"; region = RHsEngine; kind = Impl; title = "lower_stack_limit"; detail = "reflection: Hopac.Core.Worker.ThreadStackLimit lowered for 1.5 GB stacks" }
+    | NEThreads => { key = "e_threads"; region = RHsEngine; kind = Impl; title = "body threads"; detail = "workers x Thread('hopacsota-body-N', 1.5 GB stack), background" }
+    | NELoop => { key = "e_loop"; region = RHsEngine; kind = Impl; title = "body_loop"; detail = "Take work -> run body -> abandon_chain -> report finished" }
+    | NEClaim => { key = "e_claim"; region = RHsEngine; kind = Impl; title = "Engine.Claim"; detail = "ctx.Ready -> published snapshot -> settle; Taken -> push to Chain" }
+    | NEValidated => { key = "e_validated"; region = RHsEngine; kind = Impl; title = "Engine.Validated"; detail = "like Claim without writing pending" }
+    | NERead => { key = "e_read"; region = RHsEngine; kind = Impl; title = "Engine.Read"; detail = "ctx.Ready only; else compiler error" }
+    | NEFill => { key = "e_fill"; region = RHsEngine; kind = Impl; title = "Engine.Fill"; detail = "FillOp; cache in Ready; leave Chain" }
+    | NEAnnounce => { key = "e_announce"; region = RHsEngine; kind = Impl; title = "Engine.Announce"; detail = "AnnounceOp(usable); leave Chain if usable" }
+    | NEFamily => { key = "e_family"; region = RHsEngine; kind = Impl; title = "Engine.Family"; detail = "per-context local table; FamilyOp create under the guard" }
+    | NESpawn => { key = "e_spawn"; region = RHsEngine; kind = Impl; title = "Engine.Spawn"; detail = "Ch.give work (Spawn(body, Chain @ Inherited))" }
+    | NEDrain => { key = "e_drain"; region = RHsEngine; kind = Impl; title = "Engine.Drain"; detail = "Drain request; rethrow the first body crash" }
+    | NECheck => { key = "e_check"; region = RHsEngine; kind = Impl; title = "Engine.Check"; detail = "conflicts + cycles > 0 or FORCE_CONFLICT -> raise HopacsotaConflict" }
+    | NEClose => { key = "e_close"; region = RHsEngine; kind = Impl; title = "Engine.Close"; detail = "Stop, join threads, stats line, kill scheduler" }
+    | NEConflict => { key = "e_conflict"; region = RHsEngine; kind = Err; title = "exception HopacsotaConflict"; detail = "raised by await (cycle) or Check" }
+
+:| hs_table_part =
+    | NTTable
+    | NTDecide
+    | NTEntry
+    | NTState
+    | NTOps
+    | NTReplies
+    | NTPublished
+    | NTGuard
+
+:~ info_of_hs_table (p : hs_table_part) : part_info region =
+    ?= p ?|
+    | NTTable => { key = "t_table"; region = RHsTable; kind = Class; title = "Table()"; detail = "entries: Dictionary<obj, Entry>; counters named/conflicts/abandoned" }
+    | NTDecide => { key = "t_decide"; region = RHsTable; kind = Impl; title = "Table.Decide id op"; detail = "the only place keys change state" }
+    | NTEntry => { key = "t_entry"; region = RHsTable; kind = Data; title = "Entry(owner, marker)"; detail = "State + Waiters: IVar<unit> list" }
+    | NTState => { key = "t_state"; region = RHsTable; kind = Data; title = "EntryState"; detail = "Evaluating -> Announced | Filled | Abandoned" }
+    | NTOps => { key = "t_ops"; region = RHsTable; kind = Data; title = "TableOp"; detail = "ClaimOp | FillOp | AnnounceOp | AbandonOp | FamilyOp" }
+    | NTReplies => { key = "t_replies"; region = RHsTable; kind = Data; title = "TableReply"; detail = "Taken | Present | Again | Wait | Written | Family | Failed" }
+    | NTPublished => { key = "t_published"; region = RHsTable; kind = Data; title = "published"; detail = "ImmutableDictionary via Volatile.Write; lock-free reads by every thread" }
+    | NTGuard => { key = "t_guard"; region = RHsTable; kind = Data; title = "MVar<Table> guard"; detail = "serializes Decide calls" }
+
+:| hs_graph_part =
+    | NGGraph
+    | NGReq
+    | NGCh
+
+:~ info_of_hs_graph (p : hs_graph_part) : part_info region =
+    ?= p ?|
+    | NGGraph => { key = "g_graph"; region = RHsGraph; kind = Class; title = "Graph()"; detail = "waits_on: Dictionary<int, int>; cycles counter" }
+    | NGReq => { key = "g_req"; region = RHsGraph; kind = Data; title = "GraphRequest"; detail = "AddEdge(waiter, owner, accepted) | RemoveEdge | CountCycles" }
+    | NGCh => { key = "g_ch"; region = RHsGraph; kind = Data; title = "Ch<GraphRequest> edges"; detail = "foreverServer" }
+
+:| hs_work_part =
+    | NWList
+    | NWReq
+    | NWSettle
+    | NWCh
+
+:~ info_of_hs_work (p : hs_work_part) : part_info region =
+    ?= p ?|
+    | NWList => { key = "w_list"; region = RHsWork; kind = Class; title = "Worklist(tokens)"; detail = "queue, idle IVars, outstanding, drained" }
+    | NWReq => { key = "w_req"; region = RHsWork; kind = Data; title = "WorkRequest"; detail = "Spawn | Take | Drain | Stop" }
+    | NWSettle => { key = "w_settle"; region = RHsWork; kind = Impl; title = "Worklist.Settle"; detail = "hand queued bodies to idle threads while tokens > 0" }
+    | NWCh => { key = "w_ch"; region = RHsWork; kind = Data; title = "Ch<WorkRequest> work"; detail = "foreverServer" }
+
+:| hs_ctx_part =
+    | NCCtx
+    | NCTl
+
+:~ info_of_hs_ctx (p : hs_ctx_part) : part_info region =
+    ?= p ?|
+    | NCCtx => { key = "c_ctx"; region = RHsCtx; kind = Data; title = "BodyContext(id)"; detail = "Marks, Ready, Families, Nesting, Chain, Inherited, counters, Crashes" }
+    | NCTl => { key = "c_tl"; region = RHsCtx; kind = Data; title = "ThreadLocal context"; detail = "root context 0 + one per body thread" }
+
+:| diverge_part =
+    | NDOrder
+    | NDErr
+    | NDPrint
+    | NDRec
+    | NDConf
+    | NDNest
+    | NDGlobals
+    | NDSame
+
+:~ info_of_diverge (p : diverge_part) : part_info region =
+    ?= p ?|
+    | NDOrder => { key = "d_order"; region = RDiverge; kind = Note; title = "Order"; detail = "SF: depth first, a body runs where it is met. HS: annotated bodies are deferred; markers keep their place; Finish restores the canonical order" }
+    | NDErr => { key = "d_err"; region = RDiverge; kind = Note; title = "Errors"; detail = "SF: the first exception propagates. HS: a failure becomes a 'fail' marker; Finish raises the first one in canonical order" }
+    | NDPrint => { key = "d_print"; region = RDiverge; kind = Note; title = "Printing"; detail = "SF: printfn immediately. HS: buffered as 'print' markers and replayed in order" }
+    | NDRec => { key = "d_rec"; region = RDiverge; kind = Note; title = "Recursion"; detail = "SF: re-entering an owned key finds the pending value: unannotated -> 'Recursive join points must be annotated'; announce made the annotated type usable. HS: AnnounceOp also releases threads waiting on the key" }
+    | NDConf => { key = "d_conf"; region = RDiverge; kind = Note; title = "Conflicts"; detail = "SF: impossible. HS: a wait-for cycle or a foreign claim of an abandoned key -> HopacsotaConflict -> whole peval rerun with inline_restart = true (single-flight order)" }
+    | NDNest => { key = "d_nest"; region = RDiverge; kind = Note; title = "Counters"; detail = "SF: one shared uninhabited counter. HS: Nesting per BodyContext; dynamic_if/validating saved and zeroed per body" }
+    | NDGlobals => { key = "d_globals"; region = RDiverge; kind = Note; title = "Validation globals"; detail = "SF: validation_root_globals for the build backend. HS: s.globals of the current key body" }
+    | NDSame => { key = "d_same"; region = RDiverge; kind = Note; title = "Same result"; detail = "both builds must emit byte-identical code; the tables passed to codegen are the same Dictionary instances" }
+
+:| codegen_part =
+    | NCgAdapter
+    | NCgUtils
+    | NCgDead
+    | NCgUnused
+    | NCgRefc
+
+:~ info_of_codegen (p : codegen_part) : part_info region =
+    ?= p ?|
+    | NCgAdapter => { key = "cg_adapter"; region = RCodegen; kind = Seam; title = "CodegenAdapter (L12478)"; detail = "codegenMethodBody / codegenClosureBody read join_point_method/closure" }
+    | NCgUtils => { key = "cg_utils"; region = RCodegen; kind = Fn; title = "CodegenUtils (L12005)"; detail = "CodegenEnv, line/indent, generated names" }
+    | NCgDead => { key = "cg_dead"; region = RCodegen; kind = Fn; title = "DeadPureLetElision (L12296)"; detail = "drops pure lets before emit" }
+    | NCgUnused => { key = "cg_unused"; region = RCodegen; kind = Fn; title = "UnusedGlobals.prune (L12260)"; detail = "prunes result.globals" }
+    | NCgRefc => { key = "cg_refc"; region = RCodegen; kind = Fn; title = "RefCounting (L24644)"; detail = "refc_prepass for C" }
+
+:| backends_part =
+    | NBFsharp
+    | NBRust
+    | NBDelphi
+    | NBZig
+    | NBLean
+    | NBBend
+    | NBGleam
+    | NBLua
+    | NBWasm
+    | NBWgsl
+    | NBCalyx
+    | NBKotlin
+    | NBSwift
+    | NBQasm
+    | NBEbpf
+    | NBTs
+    | NBC
+    | NBCpp
+    | NBPy
+
+:~ info_of_backends (p : backends_part) : part_info region =
+    ?= p ?|
+    | NBFsharp => { key = "b_fsharp"; region = RBackends; kind = Be; title = "F#"; detail = "codegenFsharp L12592" }
+    | NBRust => { key = "b_rust"; region = RBackends; kind = Be; title = "Rust"; detail = "codegenRust L13525" }
+    | NBDelphi => { key = "b_delphi"; region = RBackends; kind = Be; title = "Delphi"; detail = "L14686" }
+    | NBZig => { key = "b_zig"; region = RBackends; kind = Be; title = "Zig"; detail = "L15368" }
+    | NBLean => { key = "b_lean"; region = RBackends; kind = Be; title = "Lean"; detail = "L15966" }
+    | NBBend => { key = "b_bend"; region = RBackends; kind = Be; title = "Bend"; detail = "L16804" }
+    | NBGleam => { key = "b_gleam"; region = RBackends; kind = Be; title = "Gleam"; detail = "L17745" }
+    | NBLua => { key = "b_lua"; region = RBackends; kind = Be; title = "Lua"; detail = "L18640" }
+    | NBWasm => { key = "b_wasm"; region = RBackends; kind = Be; title = "Wasm"; detail = "L19899" }
+    | NBWgsl => { key = "b_wgsl"; region = RBackends; kind = Be; title = "WGSL"; detail = "L20576" }
+    | NBCalyx => { key = "b_calyx"; region = RBackends; kind = Be; title = "Calyx"; detail = "L21151" }
+    | NBKotlin => { key = "b_kotlin"; region = RBackends; kind = Be; title = "Kotlin"; detail = "L21686" }
+    | NBSwift => { key = "b_swift"; region = RBackends; kind = Be; title = "Swift"; detail = "L22493" }
+    | NBQasm => { key = "b_qasm"; region = RBackends; kind = Be; title = "OpenQASM"; detail = "L23243" }
+    | NBEbpf => { key = "b_ebpf"; region = RBackends; kind = Be; title = "eBPF"; detail = "L23559" }
+    | NBTs => { key = "b_ts"; region = RBackends; kind = Be; title = "TypeScript"; detail = "L24026" }
+    | NBC => { key = "b_c"; region = RBackends; kind = Be; title = "C"; detail = "L24781" }
+    | NBCpp => { key = "b_cpp"; region = RBackends; kind = Be; title = "Cpp + Cuda"; detail = "L26089" }
+    | NBPy => { key = "b_py"; region = RBackends; kind = Be; title = "Python + Cuda"; detail = "L27214" }
+
+:| server_part =
+    | NSvMain
+    | NSvHub
+    | NSvNew
+    | NSvSuper
+    | NSvBuild
+    | NSvMany
+    | NSvOut
+    | NSvXcompat
+
+:~ info_of_server (p : server_part) : part_info region =
+    ?= p ?|
+    | NSvMain => { key = "sv_main"; region = RServer; kind = Entry; title = "main (L35517)"; detail = "CLI / server start" }
+    | NSvHub => { key = "sv_hub"; region = RServer; kind = Fn; title = "SpiralHub (L35435)"; detail = "SignalR hub" }
+    | NSvNew => { key = "sv_new"; region = RServer; kind = Fn; title = "new_server (L35265)"; detail = "ServerHooks" }
+    | NSvSuper => { key = "sv_super"; region = RServer; kind = Fn; title = "supervisor_server (L34729)"; detail = "requests, project state, attention" }
+    | NSvBuild => { key = "sv_build"; region = RServer; kind = Fn; title = "BuildFile body (L35085)"; detail = "runs on its own 1.5 GB background thread" }
+    | NSvMany => { key = "sv_many"; region = RServer; kind = Fn; title = "build_many (L35099)"; detail = "peval -> codegen -> RUST-GAP check" }
+    | NSvOut => { key = "sv_out"; region = RServer; kind = Fn; title = "OutputFiles (L33636)"; detail = "write_output_atomically_async" }
+    | NSvXcompat => { key = "sv_xcompat"; region = RServer; kind = Fn; title = "XCompat (L34179)"; detail = "postability warnings before a build" }
+
+:| env_part =
+    | NEnvWorkers
+    | NEnvPolicy
+    | NEnvStats
+    | NEnvCensus
+    | NEnvForce
+    | NEnvGap
+    | NEnvIf
+    | NEnvUnion
+    | NEnvDefine
+
+:~ info_of_env (p : env_part) : part_info region =
+    ?= p ?|
+    | NEnvWorkers => { key = "env_workers"; region = REnv; kind = Cfg; title = "SPIRAL_HOPACSOTA_WORKERS"; detail = "body threads (default = ProcessorCount)" }
+    | NEnvPolicy => { key = "env_policy"; region = REnv; kind = Cfg; title = "SPIRAL_HOPACSOTA_POLICY"; detail = "inline | dfs | bfs | random:<seed> | parallel" }
+    | NEnvStats => { key = "env_stats"; region = REnv; kind = Cfg; title = "SPIRAL_HOPACSOTA_STATS=1"; detail = "engine counters on Close" }
+    | NEnvCensus => { key = "env_census"; region = REnv; kind = Cfg; title = "SPIRAL_HOPACSOTA_CENSUS_OUT"; detail = "per-body timing file" }
+    | NEnvForce => { key = "env_force"; region = REnv; kind = Cfg; title = "SPIRAL_HOPACSOTA_FORCE_CONFLICT=1"; detail = "test the restart path" }
+    | NEnvGap => { key = "env_gap"; region = REnv; kind = Cfg; title = "SPIRAL_RUST_GAP_TRACE=1"; detail = "forces 1 evaluating thread" }
+    | NEnvIf => { key = "env_if"; region = REnv; kind = Cfg; title = "SPIRAL_IF_NESTING_LIMIT"; detail = "dynamic if depth guard" }
+    | NEnvUnion => { key = "env_union"; region = REnv; kind = Cfg; title = "SPIRAL_UNION_NESTING_LIMIT"; detail = "union nesting guard" }
+    | NEnvDefine => { key = "env_define"; region = REnv; kind = Cfg; title = "build define SPIRAL_CORE_HOPACSOTA"; detail = "build.ps1 -Mode hopacsota vs -Mode single-flight" }
+
+:| part =
+    | PInfra : infra_part
+    | PFront : front_part
+    | PProj : proj_part
+    | PTyping : typing_part
+    | PPrep : prep_part
+    | PPe : pe_part
+    | PPeTables : pe_tables_part
+    | PPeOps : pe_ops_part
+    | PPeGuards : pe_guards_part
+    | PSeams : seams_part
+    | PSf : sf_part
+    | PHsSeams : hs_seams_part
+    | PHsEngine : hs_engine_part
+    | PHsTable : hs_table_part
+    | PHsGraph : hs_graph_part
+    | PHsWork : hs_work_part
+    | PHsCtx : hs_ctx_part
+    | PDiverge : diverge_part
+    | PCodegen : codegen_part
+    | PBackends : backends_part
+    | PServer : server_part
+    | PEnv : env_part
+
+:~ info_of_part (p : part) : part_info region =
+    ?= p ?|
+    | PInfra x => info_of_infra x
+    | PFront x => info_of_front x
+    | PProj x => info_of_proj x
+    | PTyping x => info_of_typing x
+    | PPrep x => info_of_prep x
+    | PPe x => info_of_pe x
+    | PPeTables x => info_of_pe_tables x
+    | PPeOps x => info_of_pe_ops x
+    | PPeGuards x => info_of_pe_guards x
+    | PSeams x => info_of_seams x
+    | PSf x => info_of_sf x
+    | PHsSeams x => info_of_hs_seams x
+    | PHsEngine x => info_of_hs_engine x
+    | PHsTable x => info_of_hs_table x
+    | PHsGraph x => info_of_hs_graph x
+    | PHsWork x => info_of_hs_work x
+    | PHsCtx x => info_of_hs_ctx x
+    | PDiverge x => info_of_diverge x
+    | PCodegen x => info_of_codegen x
+    | PBackends x => info_of_backends x
+    | PServer x => info_of_server x
+    | PEnv x => info_of_env x
+
+:~ parts () : list part =
+    [
+        PInfra NHashcons;
+        PInfra NConsed;
+        PInfra NStriped;
+        PInfra NMemoize;
+        PInfra NHopacext;
+        PInfra NPvec;
+        PInfra NParsec;
+        PInfra NIdadapter;
+        PInfra NHopaclib;
+        PFront NStartup;
+        PFront NTokenize;
+        PFront NBlocksplit;
+        PFront NBlockparse;
+        PFront NBundle;
+        PFront NFormatter;
+        PProj NSpiproj;
+        PProj NWdiff;
+        PProj NWdiffprep;
+        PProj NGraph;
+        PProj NLoader;
+        PTyping NInfer;
+        PTyping NInferadapter;
+        PTyping NInlinedepth;
+        PTyping NTypeerr;
+        PPrep NPrepass;
+        PPrep NPrepassadapter;
+        PPrep NPrepenv;
+        PPe NPeval;
+        PPe NTopenv;
+        PPe NLangenv;
+        PPe NResult;
+        PPe NTermscope;
+        PPe NCse;
+        PPeTables NJpm;
+        PPeTables NJpc;
+        PPeTables NJpt;
+        PPeTables NBsv;
+        PPeTables NGlobals;
+        PPeOps NClosure;
+        PPeOps NTjp;
+        PPeOps NMjp;
+        PPeOps NBswitch;
+        PPeOps NUninh;
+        PPeOps NPrintst;
+        PPeOps NMainroot;
+        PPeGuards NRunaway;
+        PPeGuards NDynif;
+        PPeGuards NUnionnest;
+        PPeGuards NGindex;
+        PPeGuards NRustgap;
+        PSeams NAdapter;
+        PSeams NSSession;
+        PSeams NSClaimty;
+        PSeams NSStart;
+        PSeams NSRestart;
+        PSeams NSRoot;
+        PSeams NSDefer;
+        PSeams NSClaim;
+        PSeams NSAnnounce;
+        PSeams NSFill;
+        PSeams NSFamily;
+        PSeams NSKeyhit;
+        PSeams NSKeybody;
+        PSeams NSPrint;
+        PSeams NSNesting;
+        PSeams NSValidated;
+        PSeams NSRead;
+        PSeams NSActive;
+        PSf NSfSession;
+        PSf NSfStart;
+        PSf NSfRestart;
+        PSf NSfRoot;
+        PSf NSfDefer;
+        PSf NSfClaim;
+        PSf NSfAnnounce;
+        PSf NSfFill;
+        PSf NSfFamily;
+        PSf NSfKeyhit;
+        PSf NSfKeybody;
+        PSf NSfPrint;
+        PSf NSfNesting;
+        PSf NSfValidated;
+        PSf NSfRead;
+        PSf NSfActive;
+        PHsSeams NHsPolicy;
+        PHsSeams NHsSession;
+        PHsSeams NHsStart;
+        PHsSeams NHsRestart;
+        PHsSeams NHsRoot;
+        PHsSeams NHsDefer;
+        PHsSeams NHsBody;
+        PHsSeams NHsDrain;
+        PHsSeams NHsKeyhit;
+        PHsSeams NHsKeybody;
+        PHsSeams NHsPrint;
+        PHsSeams NHsFinish;
+        PHsSeams NHsCensus;
+        PHsSeams NHsFallback;
+        PHsSeams NHsMarks;
+        PHsEngine NEEngine;
+        PHsEngine NEControl;
+        PHsEngine NEBridge;
+        PHsEngine NEAsk;
+        PHsEngine NESettle;
+        PHsEngine NEAwait;
+        PHsEngine NEAbandon;
+        PHsEngine NEStack;
+        PHsEngine NEThreads;
+        PHsEngine NELoop;
+        PHsEngine NEClaim;
+        PHsEngine NEValidated;
+        PHsEngine NERead;
+        PHsEngine NEFill;
+        PHsEngine NEAnnounce;
+        PHsEngine NEFamily;
+        PHsEngine NESpawn;
+        PHsEngine NEDrain;
+        PHsEngine NECheck;
+        PHsEngine NEClose;
+        PHsEngine NEConflict;
+        PHsTable NTTable;
+        PHsTable NTDecide;
+        PHsTable NTEntry;
+        PHsTable NTState;
+        PHsTable NTOps;
+        PHsTable NTReplies;
+        PHsTable NTPublished;
+        PHsTable NTGuard;
+        PHsGraph NGGraph;
+        PHsGraph NGReq;
+        PHsGraph NGCh;
+        PHsWork NWList;
+        PHsWork NWReq;
+        PHsWork NWSettle;
+        PHsWork NWCh;
+        PHsCtx NCCtx;
+        PHsCtx NCTl;
+        PDiverge NDOrder;
+        PDiverge NDErr;
+        PDiverge NDPrint;
+        PDiverge NDRec;
+        PDiverge NDConf;
+        PDiverge NDNest;
+        PDiverge NDGlobals;
+        PDiverge NDSame;
+        PCodegen NCgAdapter;
+        PCodegen NCgUtils;
+        PCodegen NCgDead;
+        PCodegen NCgUnused;
+        PCodegen NCgRefc;
+        PBackends NBFsharp;
+        PBackends NBRust;
+        PBackends NBDelphi;
+        PBackends NBZig;
+        PBackends NBLean;
+        PBackends NBBend;
+        PBackends NBGleam;
+        PBackends NBLua;
+        PBackends NBWasm;
+        PBackends NBWgsl;
+        PBackends NBCalyx;
+        PBackends NBKotlin;
+        PBackends NBSwift;
+        PBackends NBQasm;
+        PBackends NBEbpf;
+        PBackends NBTs;
+        PBackends NBC;
+        PBackends NBCpp;
+        PBackends NBPy;
+        PServer NSvMain;
+        PServer NSvHub;
+        PServer NSvNew;
+        PServer NSvSuper;
+        PServer NSvBuild;
+        PServer NSvMany;
+        PServer NSvOut;
+        PServer NSvXcompat;
+        PEnv NEnvWorkers;
+        PEnv NEnvPolicy;
+        PEnv NEnvStats;
+        PEnv NEnvCensus;
+        PEnv NEnvForce;
+        PEnv NEnvGap;
+        PEnv NEnvIf;
+        PEnv NEnvUnion;
+        PEnv NEnvDefine
+    ]
+
+:~ relations () : list (relation part) =
+    [
+        { source = PServer NSvMain; target = PServer NSvNew; kind = Flow; label = "starts" };
+        { source = PServer NSvNew; target = PServer NSvSuper; kind = Flow; label = "" };
+        { source = PServer NSvHub; target = PServer NSvSuper; kind = Flow; label = "client requests" };
+        { source = PServer NSvSuper; target = PProj NLoader; kind = Flow; label = "project load" };
+        { source = PProj NLoader; target = PProj NSpiproj; kind = Flow; label = "schema" };
+        { source = PProj NLoader; target = PProj NGraph; kind = Flow; label = "package order" };
+        { source = PProj NLoader; target = PProj NWdiff; kind = Flow; label = "dirty nodes" };
+        { source = PProj NWdiff; target = PFront NTokenize; kind = Flow; label = "" };
+        { source = PFront NTokenize; target = PFront NBlocksplit; kind = Flow; label = "" };
+        { source = PFront NBlocksplit; target = PFront NBlockparse; kind = Flow; label = "" };
+        { source = PFront NBlockparse; target = PFront NBundle; kind = Flow; label = "" };
+        { source = PFront NBundle; target = PTyping NInfer; kind = Flow; label = "typecheck" };
+        { source = PProj NWdiff; target = PProj NWdiffprep; kind = Flow; label = "" };
+        { source = PProj NWdiffprep; target = PPrep NPrepass; kind = Flow; label = "" };
+        { source = PTyping NInfer; target = PPrep NPrepass; kind = Flow; label = "FilledTop" };
+        { source = PServer NSvSuper; target = PServer NSvXcompat; kind = Flow; label = "" };
+        { source = PServer NSvSuper; target = PServer NSvBuild; kind = Flow; label = "BuildFile" };
+        { source = PServer NSvBuild; target = PServer NSvMany; kind = Flow; label = "" };
+        { source = PServer NSvMany; target = PSeams NSRestart; kind = Call; label = "peval under restart" };
+        { source = PSeams NSRestart; target = PPe NPeval; kind = Flow; label = "inline_restart" };
+        { source = PPe NPeval; target = PPe NResult; kind = Flow; label = "returns" };
+        { source = PPe NResult; target = PCodegen NCgAdapter; kind = Flow; label = "tables" };
+        { source = PServer NSvMany; target = PCodegen NCgDead; kind = Flow; label = "" };
+        { source = PCodegen NCgDead; target = PCodegen NCgUnused; kind = Flow; label = "" };
+        { source = PCodegen NCgAdapter; target = PCodegen NCgUtils; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBFsharp; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBRust; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBDelphi; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBZig; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBLean; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBBend; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBGleam; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBLua; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBWasm; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBWgsl; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBCalyx; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBKotlin; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBSwift; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBQasm; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBEbpf; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBTs; kind = Flow; label = "" };
+        { source = PCodegen NCgRefc; target = PBackends NBC; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBCpp; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBPy; kind = Flow; label = "" };
+        { source = PServer NSvMany; target = PServer NSvOut; kind = Flow; label = "generated files" };
+        { source = PFront NStartup; target = PServer NSvMain; kind = Flow; label = "CLI args" };
+        { source = PServer NSvMany; target = PPeGuards NRustgap; kind = DataFlow; label = "missing arm check" };
+        { source = PFront NFormatter; target = PFront NTokenize; kind = DataFlow; label = "tokens" };
+        { source = PInfra NParsec; target = PFront NBlockparse; kind = DataFlow; label = "" };
+        { source = PInfra NPvec; target = PProj NWdiff; kind = DataFlow; label = "" };
+        { source = PInfra NHopacext; target = PProj NWdiff; kind = DataFlow; label = "promises/streams" };
+        { source = PInfra NHopacext; target = PTyping NInfer; kind = DataFlow; label = "FilledTop promise" };
+        { source = PInfra NHopaclib; target = PInfra NHopacext; kind = DataFlow; label = "" };
+        { source = PInfra NHopaclib; target = PHsEngine NEControl; kind = DataFlow; label = "Scheduler" };
+        { source = PInfra NHopaclib; target = PHsTable NTGuard; kind = DataFlow; label = "MVar" };
+        { source = PInfra NHopaclib; target = PHsGraph NGCh; kind = DataFlow; label = "Ch" };
+        { source = PInfra NIdadapter; target = PTyping NInfer; kind = DataFlow; label = "" };
+        { source = PTyping NInferadapter; target = PTyping NInfer; kind = SeamLink; label = "" };
+        { source = PPrep NPrepassadapter; target = PPrep NPrepass; kind = SeamLink; label = "" };
+        { source = PTyping NInlinedepth; target = PTyping NInfer; kind = DataFlow; label = "" };
+        { source = PTyping NTypeerr; target = PTyping NInfer; kind = DataFlow; label = "" };
+        { source = PPrep NPrepenv; target = PPrep NPrepass; kind = DataFlow; label = "" };
+        { source = PInfra NConsed; target = PInfra NHashcons; kind = DataFlow; label = "" };
+        { source = PInfra NStriped; target = PInfra NHashcons; kind = Reuse; label = "32 x HashConsTable" };
+        { source = PPe NPeval; target = PPe NTopenv; kind = DataFlow; label = "" };
+        { source = PPe NPeval; target = PPe NLangenv; kind = DataFlow; label = "" };
+        { source = PPe NPeval; target = PPeTables NJpm; kind = DataFlow; label = "" };
+        { source = PPe NPeval; target = PPeTables NJpc; kind = DataFlow; label = "" };
+        { source = PPe NPeval; target = PPeTables NJpt; kind = DataFlow; label = "" };
+        { source = PPe NPeval; target = PPeTables NBsv; kind = DataFlow; label = "" };
+        { source = PPe NPeval; target = PSeams NSStart; kind = Call; label = "start_for env.inline_restart" };
+        { source = PPe NPeval; target = PSeams NAdapter; kind = DataFlow; label = "builds the adapter" };
+        { source = PSeams NAdapter; target = PPeGuards NDynif; kind = DataFlow; label = "dynamic_if / set" };
+        { source = PSeams NAdapter; target = PPeGuards NRustgap; kind = DataFlow; label = "validating / set" };
+        { source = PSeams NAdapter; target = PPeGuards NGindex; kind = DataFlow; label = "rebuild_index" };
+        { source = PSeams NAdapter; target = PPe NLangenv; kind = DataFlow; label = "globals / with_globals" };
+        { source = PPe NPeval; target = PPeOps NMainroot; kind = Call; label = "" };
+        { source = PPeOps NMainroot; target = PSeams NSRoot; kind = Call; label = "" };
+        { source = PPeOps NMainroot; target = PPe NTermscope; kind = Call; label = "main ()" };
+        { source = PPe NTermscope; target = PPeOps NClosure; kind = Call; label = "" };
+        { source = PPe NTermscope; target = PPeOps NTjp; kind = Call; label = "" };
+        { source = PPe NTermscope; target = PPeOps NMjp; kind = Call; label = "" };
+        { source = PPe NTermscope; target = PPeOps NBswitch; kind = Call; label = "" };
+        { source = PPe NTermscope; target = PPeOps NUninh; kind = Call; label = "" };
+        { source = PPe NTermscope; target = PPeOps NPrintst; kind = Call; label = "" };
+        { source = PPe NTermscope; target = PPe NCse; kind = Call; label = "" };
+        { source = PPe NTermscope; target = PPeGuards NRunaway; kind = Call; label = "EJP0041 / unroll" };
+        { source = PPe NTermscope; target = PPeGuards NUnionnest; kind = DataFlow; label = "" };
+        { source = PPe NTermscope; target = PPeGuards NDynif; kind = DataFlow; label = "" };
+        { source = PPe NLangenv; target = PPeTables NGlobals; kind = DataFlow; label = "" };
+        { source = PPeGuards NGindex; target = PPeTables NGlobals; kind = DataFlow; label = "" };
+        { source = PPeTables NJpm; target = PInfra NHashcons; kind = DataFlow; label = "key interning" };
+        { source = PPeTables NJpc; target = PInfra NHashcons; kind = DataFlow; label = "" };
+        { source = PPeTables NJpt; target = PInfra NHashcons; kind = DataFlow; label = "" };
+        { source = PPeTables NBsv; target = PInfra NHashcons; kind = DataFlow; label = "" };
+        { source = PPe NResult; target = PPeTables NJpm; kind = DataFlow; label = "" };
+        { source = PPe NResult; target = PPeTables NJpc; kind = DataFlow; label = "" };
+        { source = PPe NResult; target = PPeTables NGlobals; kind = DataFlow; label = "" };
+        { source = PCodegen NCgAdapter; target = PPeTables NJpm; kind = DataFlow; label = "codegenMethodBody" };
+        { source = PCodegen NCgAdapter; target = PPeTables NJpc; kind = DataFlow; label = "codegenClosureBody" };
+        { source = PPeOps NClosure; target = PSeams NSFamily; kind = Call; label = "1" };
+        { source = PPeOps NClosure; target = PSeams NSClaim; kind = Call; label = "2" };
+        { source = PPeOps NClosure; target = PSeams NSAnnounce; kind = Call; label = "3 usable" };
+        { source = PPeOps NClosure; target = PSeams NSKeybody; kind = Call; label = "4 'closure'" };
+        { source = PPeOps NClosure; target = PSeams NSDefer; kind = Call; label = "5 Some ()" };
+        { source = PPeOps NClosure; target = PSeams NSFill; kind = Call; label = "6" };
+        { source = PPeOps NClosure; target = PSeams NSKeyhit; kind = Call; label = "Found" };
+        { source = PPeOps NTjp; target = PSeams NSFamily; kind = Call; label = "1" };
+        { source = PPeOps NTjp; target = PSeams NSClaim; kind = Call; label = "2" };
+        { source = PPeOps NTjp; target = PSeams NSKeybody; kind = Call; label = "3 'type'" };
+        { source = PPeOps NTjp; target = PSeams NSFill; kind = Call; label = "4" };
+        { source = PPeOps NTjp; target = PSeams NSKeyhit; kind = Call; label = "Found" };
+        { source = PPeOps NMjp; target = PSeams NSFamily; kind = Call; label = "1" };
+        { source = PPeOps NMjp; target = PSeams NSClaim; kind = Call; label = "2" };
+        { source = PPeOps NMjp; target = PSeams NSAnnounce; kind = Call; label = "3 if annotated" };
+        { source = PPeOps NMjp; target = PSeams NSKeybody; kind = Call; label = "4 'method'" };
+        { source = PPeOps NMjp; target = PSeams NSDefer; kind = Call; label = "5 annot" };
+        { source = PPeOps NMjp; target = PSeams NSFill; kind = Call; label = "6" };
+        { source = PPeOps NMjp; target = PSeams NSKeyhit; kind = Call; label = "Found" };
+        { source = PPeOps NBswitch; target = PSeams NSValidated; kind = Call; label = "1" };
+        { source = PPeOps NBswitch; target = PSeams NSRead; kind = Call; label = "2 if validated" };
+        { source = PPeOps NBswitch; target = PSeams NSKeybody; kind = Call; label = "else 'bsv'" };
+        { source = PPeOps NBswitch; target = PSeams NSFill; kind = Call; label = "" };
+        { source = PPeOps NBswitch; target = PSeams NSActive; kind = Call; label = "globals choice" };
+        { source = PPeOps NBswitch; target = PSeams NSKeyhit; kind = Call; label = "" };
+        { source = PPeOps NUninh; target = PSeams NSNesting; kind = Call; label = "" };
+        { source = PPeOps NPrintst; target = PSeams NSPrint; kind = Call; label = "" };
+        { source = PSeams NSClaim; target = PSeams NSClaimty; kind = DataFlow; label = "" };
+        { source = PSeams NSStart; target = PSeams NSSession; kind = DataFlow; label = "" };
+        { source = PSeams NSStart; target = PSeams NAdapter; kind = DataFlow; label = "" };
+        { source = PPeOps NClosure; target = PPeTables NJpc; kind = DataFlow; label = "" };
+        { source = PPeOps NTjp; target = PPeTables NJpt; kind = DataFlow; label = "" };
+        { source = PPeOps NMjp; target = PPeTables NJpm; kind = DataFlow; label = "" };
+        { source = PPeOps NBswitch; target = PPeTables NBsv; kind = DataFlow; label = "" };
+        { source = PSeams NSStart; target = PSf NSfStart; kind = ToSingleFlight; label = "" };
+        { source = PSeams NSSession; target = PSf NSfSession; kind = ToSingleFlight; label = "" };
+        { source = PSeams NSRestart; target = PSf NSfRestart; kind = ToSingleFlight; label = "" };
+        { source = PSeams NSRoot; target = PSf NSfRoot; kind = ToSingleFlight; label = "" };
+        { source = PSeams NSDefer; target = PSf NSfDefer; kind = ToSingleFlight; label = "" };
+        { source = PSeams NSClaim; target = PSf NSfClaim; kind = ToSingleFlight; label = "" };
+        { source = PSeams NSAnnounce; target = PSf NSfAnnounce; kind = ToSingleFlight; label = "" };
+        { source = PSeams NSFill; target = PSf NSfFill; kind = ToSingleFlight; label = "" };
+        { source = PSeams NSFamily; target = PSf NSfFamily; kind = ToSingleFlight; label = "" };
+        { source = PSeams NSKeyhit; target = PSf NSfKeyhit; kind = ToSingleFlight; label = "" };
+        { source = PSeams NSKeybody; target = PSf NSfKeybody; kind = ToSingleFlight; label = "" };
+        { source = PSeams NSPrint; target = PSf NSfPrint; kind = ToSingleFlight; label = "" };
+        { source = PSeams NSNesting; target = PSf NSfNesting; kind = ToSingleFlight; label = "" };
+        { source = PSeams NSValidated; target = PSf NSfValidated; kind = ToSingleFlight; label = "" };
+        { source = PSeams NSRead; target = PSf NSfRead; kind = ToSingleFlight; label = "" };
+        { source = PSeams NSActive; target = PSf NSfActive; kind = ToSingleFlight; label = "" };
+        { source = PSf NSfFamily; target = PInfra NMemoize; kind = Reuse; label = "" };
+        { source = PSf NSfDefer; target = PPe NTermscope; kind = Call; label = "evaluates now" };
+        { source = PSeams NSStart; target = PHsSeams NHsStart; kind = ToHopacsota; label = "" };
+        { source = PSeams NSSession; target = PHsSeams NHsSession; kind = ToHopacsota; label = "" };
+        { source = PSeams NSRestart; target = PHsSeams NHsRestart; kind = ToHopacsota; label = "" };
+        { source = PSeams NSRoot; target = PHsSeams NHsRoot; kind = ToHopacsota; label = "" };
+        { source = PSeams NSDefer; target = PHsSeams NHsDefer; kind = ToHopacsota; label = "" };
+        { source = PSeams NSKeyhit; target = PHsSeams NHsKeyhit; kind = ToHopacsota; label = "" };
+        { source = PSeams NSKeybody; target = PHsSeams NHsKeybody; kind = ToHopacsota; label = "" };
+        { source = PSeams NSPrint; target = PHsSeams NHsPrint; kind = ToHopacsota; label = "" };
+        { source = PSeams NSClaim; target = PHsSeams NHsFallback; kind = ToHopacsota; label = "" };
+        { source = PSeams NSAnnounce; target = PHsSeams NHsFallback; kind = ToHopacsota; label = "" };
+        { source = PSeams NSFill; target = PHsSeams NHsFallback; kind = ToHopacsota; label = "" };
+        { source = PSeams NSFamily; target = PHsSeams NHsFallback; kind = ToHopacsota; label = "" };
+        { source = PSeams NSNesting; target = PHsSeams NHsFallback; kind = ToHopacsota; label = "" };
+        { source = PSeams NSValidated; target = PHsSeams NHsFallback; kind = ToHopacsota; label = "" };
+        { source = PSeams NSRead; target = PHsSeams NHsFallback; kind = ToHopacsota; label = "" };
+        { source = PSeams NSActive; target = PHsSeams NHsSession; kind = ToHopacsota; label = "not null" };
+        { source = PEnv NEnvPolicy; target = PHsSeams NHsPolicy; kind = DataFlow; label = "" };
+        { source = PHsSeams NHsPolicy; target = PHsSeams NHsSession; kind = DataFlow; label = "" };
+        { source = PHsSeams NHsStart; target = PHsSeams NHsSession; kind = DataFlow; label = "policy Some -> Session" };
+        { source = PHsSeams NHsSession; target = PHsSeams NHsMarks; kind = DataFlow; label = "own" };
+        { source = PHsSeams NHsSession; target = PHsSeams NHsCensus; kind = DataFlow; label = "" };
+        { source = PEnv NEnvCensus; target = PHsSeams NHsCensus; kind = DataFlow; label = "" };
+        { source = PHsSeams NHsDefer; target = PHsSeams NHsBody; kind = DataFlow; label = "creates" };
+        { source = PHsSeams NHsDefer; target = PHsSeams NHsMarks; kind = DataFlow; label = "'globals' marker" };
+        { source = PHsSeams NHsDefer; target = PHsEngine NESpawn; kind = Engine; label = "Parallel" };
+        { source = PHsSeams NHsDefer; target = PHsSeams NHsDrain; kind = DataFlow; label = "queued (BFS / Seeded)" };
+        { source = PHsSeams NHsBody; target = PSeams NAdapter; kind = DataFlow; label = "save / zero / restore" };
+        { source = PHsSeams NHsBody; target = PPe NTermscope; kind = Call; label = "evaluate body_env" };
+        { source = PHsSeams NHsKeyhit; target = PHsSeams NHsMarks; kind = DataFlow; label = "" };
+        { source = PHsSeams NHsKeybody; target = PHsSeams NHsMarks; kind = DataFlow; label = "'key-<label>'" };
+        { source = PHsSeams NHsPrint; target = PHsSeams NHsMarks; kind = DataFlow; label = "'print'" };
+        { source = PHsSeams NHsRoot; target = PHsEngine NEEngine; kind = Engine; label = "Parallel -> new" };
+        { source = PHsSeams NHsRoot; target = PHsSeams NHsDrain; kind = Call; label = "" };
+        { source = PHsSeams NHsRoot; target = PHsEngine NECheck; kind = Engine; label = "" };
+        { source = PHsSeams NHsRoot; target = PHsSeams NHsFinish; kind = Call; label = "" };
+        { source = PHsSeams NHsRoot; target = PHsEngine NEClose; kind = Engine; label = "" };
+        { source = PHsSeams NHsDrain; target = PHsEngine NEDrain; kind = Engine; label = "" };
+        { source = PHsSeams NHsFinish; target = PHsSeams NHsMarks; kind = DataFlow; label = "merge all contexts" };
+        { source = PHsSeams NHsFinish; target = PPeGuards NGindex; kind = DataFlow; label = "rebuild_index" };
+        { source = PHsSeams NHsFinish; target = PPeTables NGlobals; kind = DataFlow; label = "rewrites in canonical order" };
+        { source = PHsSeams NHsRestart; target = PHsEngine NEConflict; kind = DataFlow; label = "catches" };
+        { source = PHsSeams NHsRestart; target = PPe NPeval; kind = Call; label = "rerun with inline_restart = true" };
+        { source = PHsSeams NHsStart; target = PSf NSfStart; kind = Reuse; label = "inline_restart -> null session = single-flight semantics" };
+        { source = PHsSeams NHsFallback; target = PSf NSfClaim; kind = Reuse; label = "same code when engine = null" };
+        { source = PHsSeams NHsFallback; target = PSf NSfFamily; kind = Reuse; label = "Utils.memoize" };
+        { source = PHsSeams NHsFallback; target = PSf NSfFill; kind = Reuse; label = "" };
+        { source = PHsSeams NHsFallback; target = PSf NSfValidated; kind = Reuse; label = "" };
+        { source = PHsSeams NHsFallback; target = PHsEngine NEClaim; kind = Engine; label = "engine.Claim" };
+        { source = PHsSeams NHsFallback; target = PHsEngine NEFill; kind = Engine; label = "engine.Fill" };
+        { source = PHsSeams NHsFallback; target = PHsEngine NEAnnounce; kind = Engine; label = "engine.Announce" };
+        { source = PHsSeams NHsFallback; target = PHsEngine NEFamily; kind = Engine; label = "engine.Family" };
+        { source = PHsSeams NHsFallback; target = PHsEngine NEValidated; kind = Engine; label = "engine.Validated" };
+        { source = PHsSeams NHsFallback; target = PHsEngine NERead; kind = Engine; label = "engine.Read" };
+        { source = PHsSeams NHsFallback; target = PHsCtx NCCtx; kind = Engine; label = "Context.Nesting" };
+        { source = PEnv NEnvWorkers; target = PHsEngine NEEngine; kind = DataFlow; label = "" };
+        { source = PEnv NEnvGap; target = PHsEngine NEEngine; kind = DataFlow; label = "1 thread" };
+        { source = PEnv NEnvStats; target = PHsEngine NEClose; kind = DataFlow; label = "" };
+        { source = PEnv NEnvForce; target = PHsEngine NECheck; kind = DataFlow; label = "" };
+        { source = PHsEngine NEEngine; target = PHsEngine NEControl; kind = DataFlow; label = "" };
+        { source = PHsEngine NEEngine; target = PHsEngine NEThreads; kind = DataFlow; label = "" };
+        { source = PHsEngine NEEngine; target = PHsTable NTTable; kind = DataFlow; label = "" };
+        { source = PHsEngine NEEngine; target = PHsGraph NGGraph; kind = DataFlow; label = "" };
+        { source = PHsEngine NEEngine; target = PHsWork NWList; kind = DataFlow; label = "" };
+        { source = PHsEngine NEEngine; target = PHsCtx NCTl; kind = DataFlow; label = "" };
+        { source = PHsEngine NEEngine; target = PHsEngine NEStack; kind = Call; label = "" };
+        { source = PHsEngine NEThreads; target = PHsEngine NELoop; kind = Call; label = "" };
+        { source = PHsEngine NEThreads; target = PHsEngine NEStack; kind = Call; label = "" };
+        { source = PHsEngine NELoop; target = PHsWork NWCh; kind = Engine; label = "Take" };
+        { source = PHsEngine NELoop; target = PHsSeams NHsBody; kind = Call; label = "runs" };
+        { source = PHsEngine NELoop; target = PHsEngine NEAbandon; kind = Call; label = "finally" };
+        { source = PHsEngine NELoop; target = PHsCtx NCCtx; kind = DataFlow; label = "sets" };
+        { source = PHsEngine NEClaim; target = PHsCtx NCCtx; kind = DataFlow; label = "Ready / Chain" };
+        { source = PHsEngine NEClaim; target = PHsTable NTPublished; kind = DataFlow; label = "snapshot read" };
+        { source = PHsEngine NEClaim; target = PHsEngine NESettle; kind = Call; label = "" };
+        { source = PHsEngine NEValidated; target = PHsEngine NESettle; kind = Call; label = "" };
+        { source = PHsEngine NERead; target = PHsCtx NCCtx; kind = DataFlow; label = "Ready only" };
+        { source = PHsEngine NESettle; target = PHsEngine NEAsk; kind = Call; label = "ClaimOp" };
+        { source = PHsEngine NESettle; target = PHsEngine NEAwait; kind = Call; label = "on Wait" };
+        { source = PHsEngine NEAwait; target = PHsGraph NGCh; kind = Engine; label = "AddEdge / RemoveEdge" };
+        { source = PHsEngine NEAwait; target = PHsEngine NEConflict; kind = DataFlow; label = "cycle" };
+        { source = PHsEngine NEFill; target = PHsEngine NEAsk; kind = Call; label = "FillOp" };
+        { source = PHsEngine NEAnnounce; target = PHsEngine NEAsk; kind = Call; label = "AnnounceOp" };
+        { source = PHsEngine NEFamily; target = PHsEngine NEAsk; kind = Call; label = "FamilyOp" };
+        { source = PHsEngine NEFamily; target = PHsCtx NCCtx; kind = DataFlow; label = "local table" };
+        { source = PHsEngine NEAbandon; target = PHsEngine NEAsk; kind = Call; label = "AbandonOp" };
+        { source = PHsEngine NESpawn; target = PHsWork NWCh; kind = Engine; label = "Spawn" };
+        { source = PHsEngine NEDrain; target = PHsWork NWCh; kind = Engine; label = "Drain" };
+        { source = PHsEngine NEClose; target = PHsWork NWCh; kind = Engine; label = "Stop" };
+        { source = PHsEngine NECheck; target = PHsGraph NGCh; kind = Engine; label = "CountCycles" };
+        { source = PHsEngine NECheck; target = PHsTable NTGuard; kind = Engine; label = "Conflicts" };
+        { source = PHsEngine NECheck; target = PHsEngine NEConflict; kind = DataFlow; label = "" };
+        { source = PHsEngine NEAsk; target = PHsEngine NEBridge; kind = Call; label = "" };
+        { source = PHsEngine NEAsk; target = PHsTable NTGuard; kind = Engine; label = "modifyFun" };
+        { source = PHsEngine NEBridge; target = PHsEngine NEControl; kind = Engine; label = "Scheduler.run" };
+        { source = PHsTable NTGuard; target = PHsTable NTDecide; kind = Engine; label = "" };
+        { source = PHsTable NTDecide; target = PHsTable NTEntry; kind = DataFlow; label = "" };
+        { source = PHsTable NTDecide; target = PHsTable NTOps; kind = DataFlow; label = "" };
+        { source = PHsTable NTDecide; target = PHsTable NTReplies; kind = DataFlow; label = "" };
+        { source = PHsTable NTDecide; target = PHsTable NTPublished; kind = DataFlow; label = "publish" };
+        { source = PHsTable NTEntry; target = PHsTable NTState; kind = DataFlow; label = "" };
+        { source = PHsTable NTTable; target = PHsTable NTDecide; kind = DataFlow; label = "" };
+        { source = PHsGraph NGCh; target = PHsGraph NGGraph; kind = Engine; label = "Handle" };
+        { source = PHsGraph NGGraph; target = PHsGraph NGReq; kind = DataFlow; label = "" };
+        { source = PHsWork NWCh; target = PHsWork NWList; kind = Engine; label = "Handle" };
+        { source = PHsWork NWList; target = PHsWork NWReq; kind = DataFlow; label = "" };
+        { source = PHsWork NWList; target = PHsWork NWSettle; kind = Call; label = "" };
+        { source = PHsCtx NCTl; target = PHsCtx NCCtx; kind = DataFlow; label = "" };
+        { source = PHsCtx NCCtx; target = PHsSeams NHsMarks; kind = Reuse; label = "same Marks type as the session" };
+        { source = PHsTable NTDecide; target = PInfra NHashcons; kind = DataFlow; label = "keys are (table, ConsedNode)" };
+        { source = PDiverge NDOrder; target = PSf NSfDefer; kind = NoteLink; label = "" };
+        { source = PDiverge NDOrder; target = PHsSeams NHsDefer; kind = NoteLink; label = "" };
+        { source = PDiverge NDOrder; target = PHsSeams NHsFinish; kind = NoteLink; label = "" };
+        { source = PDiverge NDErr; target = PSf NSfRoot; kind = NoteLink; label = "" };
+        { source = PDiverge NDErr; target = PHsSeams NHsBody; kind = NoteLink; label = "" };
+        { source = PDiverge NDPrint; target = PSf NSfPrint; kind = NoteLink; label = "" };
+        { source = PDiverge NDPrint; target = PHsSeams NHsPrint; kind = NoteLink; label = "" };
+        { source = PDiverge NDRec; target = PSf NSfClaim; kind = NoteLink; label = "" };
+        { source = PDiverge NDRec; target = PHsEngine NEAnnounce; kind = NoteLink; label = "" };
+        { source = PDiverge NDConf; target = PSf NSfRestart; kind = NoteLink; label = "" };
+        { source = PDiverge NDConf; target = PHsSeams NHsRestart; kind = NoteLink; label = "" };
+        { source = PDiverge NDNest; target = PSf NSfNesting; kind = NoteLink; label = "" };
+        { source = PDiverge NDNest; target = PHsCtx NCCtx; kind = NoteLink; label = "" };
+        { source = PDiverge NDGlobals; target = PSf NSfActive; kind = NoteLink; label = "" };
+        { source = PDiverge NDGlobals; target = PPeOps NBswitch; kind = NoteLink; label = "" };
+        { source = PDiverge NDSame; target = PPe NResult; kind = NoteLink; label = "" };
+        { source = PEnv NEnvDefine; target = PSf NSfSession; kind = NoteLink; label = "-Mode single-flight" };
+        { source = PEnv NEnvDefine; target = PHsSeams NHsSession; kind = NoteLink; label = "-Mode hopacsota" };
+        { source = PEnv NEnvIf; target = PPeGuards NDynif; kind = DataFlow; label = "" };
+        { source = PEnv NEnvUnion; target = PPeGuards NUnionnest; kind = DataFlow; label = "" }
+    ]

@@ -14,7 +14,7 @@ New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
 $nodeScript = Join-Path $PSScriptRoot 'profile-restore-drill-node.py'
 $reached = $null
 foreach ($route in $Routes) {
-    scp -q -o ConnectTimeout=8 $nodeScript "${route}:$RemoteDir/profile-restore-drill-node.py" 2>$null
+    scp -q -o ConnectTimeout=8 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 $nodeScript "${route}:$RemoteDir/profile-restore-drill-node.py" 2>$null
     if ($LASTEXITCODE -eq 0) { $reached = $route; break }
 }
 $failures = [Collections.Generic.List[string]]::new()
@@ -22,7 +22,7 @@ $summary = ''
 if (-not $reached) {
     $failures.Add("no route reached the node ($($Routes -join ', '))")
 } else {
-    $raw = ssh -o ConnectTimeout=8 $reached "`"$NodePython`" -I $RemoteDir/profile-restore-drill-node.py $RemoteDir $MemberFilter" 2>&1
+    $raw = ssh -o ConnectTimeout=8 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 $reached "`"$NodePython`" -I $RemoteDir/profile-restore-drill-node.py $RemoteDir $MemberFilter" 2>&1
     $result = try { ($raw | Select-Object -Last 1) | ConvertFrom-Json } catch { [pscustomobject]@{ error = "unparsable node output: $(($raw | Select-Object -Last 2) -join ' ')" } }
     if ($result.error) {
         $failures.Add("node: $($result.error)")

@@ -3,7 +3,15 @@ $ErrorActionPreference = 'Stop'
 $kit = Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe'
 & $kit schedule due profile-mirror $EveryMinutes *> $null
 if ($LASTEXITCODE -ne 0) { return }
-if (Get-CimInstance Win32_Process | Where-Object { "$($_.CommandLine)" -match '[\\/]profile-mirror\.ps1' -and $_.ProcessId -ne $PID }) { return }
+# Overlap guard — but a HUNG prior run (e.g. a remote ssh stuck on a full node) must NOT block retries forever
+# (that turned one hang into a 6h silent freeze, 2026-11-01). Kill a stale (>90min) run + its children, then proceed.
+foreach ($p in @(Get-CimInstance Win32_Process | Where-Object { "$($_.CommandLine)" -match '[\\/]profile-mirror\.ps1' -and $_.ProcessId -ne $PID })) {
+    $ageMin = try { ((Get-Date) - $p.CreationDate).TotalMinutes } catch { 999 }
+    if ($ageMin -gt 90) {
+        Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $p.ProcessId } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+    } else { return }
+}
 $mirror = Join-Path $PSScriptRoot 'profile-mirror.ps1'
 $log = Join-Path $env:LOCALAPPDATA 'kit\schedules\profile-mirror.last.log'
 New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null

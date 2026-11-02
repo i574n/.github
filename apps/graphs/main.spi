@@ -1,0 +1,18 @@
+:< sm'_operators
+:< host
+:< graph
+:< emit
+:< agile
+:< compiler
+
+:= main () : i32 =
+    host_helpers ()
+    := repo = env_or "GRAPHS_REPO" "."
+    := out = env_or "GRAPHS_OUT" (repo ++# "/apps/graphs/out")
+    make_dirs out
+    := items = parse_items (read_text (repo ++# "/docs/backlog/state/agile.spi"))
+    say ("backlog items " ++# show_i32 (listm::length items : i32))
+    publish (lay_out (CompactOrthogonal (12i32, 10i32)) (Modeled (backlog_diagram items))) (out ++# "/backlog")
+    publish (lay_out (Hierarchic LeftToRight) (Modeled (compiler_diagram ()))) (out ++# "/spiral-compiler")
+    say "graphs done"
+    0i32

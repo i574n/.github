@@ -1,0 +1,228 @@
+:< sm'_operators
+:< host
+:< graph
+
+:| work =
+    | Epic
+    | Feature
+    | Story
+    | Chore
+
+:| priority =
+    | P0
+    | P1
+    | P2
+    | Later
+
+:| status =
+    | Planned
+    | Active
+    | Blocked
+    | Paused
+    | Done
+
+:| area =
+    | Main
+    | Kit
+    | Xlane
+    | Fiscal
+    | Compiler
+    | Tibia
+    | Resilience
+    | Cells
+    | Ci
+    | Other
+
+:== item = { id : string; title : string; work : work; priority : priority; status : status; area : area; deps : list string }
+
+:~ work_of (text : string) : work =
+    ? text =. "Epic" ?> Epic
+    |? text =. "Feature" ?> Feature
+    |? text =. "Story" ?> Story
+    |: Chore
+
+:~ priority_of (text : string) : priority =
+    ? text =. "P0" ?> P0
+    |? text =. "P1" ?> P1
+    |? text =. "P2" ?> P2
+    |: Later
+
+:~ status_of (text : string) : status =
+    ? text =. "Active" ?> Active
+    |? text =. "Blocked" ?> Blocked
+    |? text =. "Paused" ?> Paused
+    |? text =. "Done" ?> Done
+    |: Planned
+
+:~ area_name (a : area) : string =
+    ?= a ?|
+    | Main => "main"
+    | Kit => "kit"
+    | Xlane => "x"
+    | Fiscal => "fiscal"
+    | Compiler => "compiler"
+    | Tibia => "tibia"
+    | Resilience => "resilience"
+    | Cells => "cells"
+    | Ci => "ci"
+    | Other => "other"
+
+:~ area_of_word (w : string) : area =
+    ? w =. "main" ?> Main
+    |? w =. "kit" || w =. "eoie" ?> Kit
+    |? w =. "x" || w =. "x-dumps" ?> Xlane
+    |? w =. "fiscal" || w =. "sefaz" ?> Fiscal
+    |? w =. "compiler" || w =. "spiral" || w =. "backend" || w =. "lib" || w =. "core" || w =. "zig" || w =. "gleam" || w =. "formatter" || w =. "hopacsota" || w =. "edition" ?> Compiler
+    |? w =. "tibia" ?> Tibia
+    |? w =. "resilience" ?> Resilience
+    |? w =. "cells" || w =. "kino" ?> Cells
+    |? w =. "ci" || w =. "matrix" || w =. "harness" || w =. "tests" ?> Ci
+    |: Other
+
+:~ is_lane (w : string) : bool =
+    ?= area_of_word w ?|
+    | Other => !-
+    | _ => not (w =. "lib" || w =. "core" || w =. "zig" || w =. "gleam" || w =. "formatter" || w =. "hopacsota" || w =. "edition" || w =. "sefaz" || w =. "matrix" || w =. "harness" || w =. "tests" || w =. "x-dumps")
+
+:~ ^ first_team (tags : list string) : option string =
+    ?= tags ?|
+    | t :: rest => ? sm'::starts_with "team:" t ?> Some (sm'::slice 5i32 ((sm'::length t : i32) - 1i32) t) |: first_team rest
+    | [] => None
+
+:~ ^ first_lane (tags : list string) : option string =
+    ?= tags ?|
+    | t :: rest => ? is_lane t ?> Some t |: first_lane rest
+    | [] => None
+
+:~ area_of_tags (text : string) : area =
+    := tags = sm'::split_list "," text
+    ?= first_team tags ?|
+    | Some t => area_of_word t
+    | None =>
+        ?= first_lane tags ?|
+        | Some l => area_of_word l
+        | None =>
+            ?= tags ?|
+            | t :: _ => area_of_word t
+            | [] => Other
+
+:~ ^ last_at (needle : string) (text : string) (offset : i32) (found : i32) : i32 =
+    := i : i32 = sm'::index_of needle text
+    ? i < 0i32 ?> found
+    |: last_at needle (sm'::slice (i + 1i32) ((sm'::length text : i32) - 1i32) text) (offset + i + 1i32) (offset + i)
+
+:~ ^ kind_marker (markers : list string) (line : string) (best : i32) : i32 =
+    ?= markers ?|
+    | m :: rest =>
+        := at = last_at m line 0i32 (-1i32)
+        kind_marker rest line (? at > best ?> at |: best)
+    | [] => best
+
+:~ unquoted (s : string) : string =
+    := n : i32 = sm'::length s
+    ? n >= 2i32 ?> sm'::slice 1i32 (n - 2i32) s |: s
+
+:~ unescaped (s : string) : string = s |> sm'::replace "\\\"" "\"" |> sm'::replace "\\\\" "\\"
+
+:~ field (fields : list string) (i : i32) (fallback : string) : string =
+    fields |> listm::fold (\ (n, found) (f : string) => n + 1i32, ? n =. i ?> f |: found) (0i32, fallback) |> \ (_, found) => found
+
+:~ parse_task (line : string) : option item =
+    := start : i32 = sm'::index_of "() = Task (\"" line
+    ? start < 0i32 ?> None
+    |:
+        := rest = sm'::slice (start + 12i32) ((sm'::length line : i32) - 1i32) line
+        := id_end : i32 = sm'::index_of "\", \"" rest
+        := marker = kind_marker ["\", Epic, P"; "\", Feature, P"; "\", Story, P"; "\", TaskKind, P"] rest (-1i32)
+        ? id_end < 0i32 || marker < id_end ?> None
+        |:
+            := id = sm'::slice 0i32 (id_end - 1i32) rest
+            := title = unescaped (sm'::slice (id_end + 4i32) (marker - 1i32) rest)
+            := tail = sm'::slice (marker + 3i32) ((sm'::length rest : i32) - 2i32) rest
+            := fields = sm'::split_list ", " tail
+            := deps_text = unquoted (field fields 5i32 "\"\"")
+            Some {
+                id = id
+                title = title
+                work = work_of (field fields 0i32 "")
+                priority = priority_of (field fields 1i32 "")
+                status = status_of (field fields 4i32 "")
+                area = area_of_tags (unquoted (field fields 6i32 "\"\""))
+                deps = ? deps_text =. "" ?> [] |: sm'::split_list "," deps_text
+            }
+
+:~ parse_items (text : string) : list item =
+    sm'::split_list "\n" text
+    |> listm::fold (\ acc (line : string) =>
+        ? sm'::starts_with "inl " line ?>
+            ?= parse_task line ?|
+            | Some it => it :: acc
+            | None => acc
+        |: acc) []
+    |> listm::rev
+
+:~ status_fill (s : status) : string =
+    ?= s ?|
+    | Done => "#BFE3C0"
+    | Active => "#FFB25B"
+    | Blocked => "#FF6F6F"
+    | Paused => "#CDB4E6"
+    | Planned => "#A9CCFF"
+
+:~ item_style (it : item) : node_style =
+    := shape = ?= it.work ?| Epic => Hexagon | Feature => RoundRectangle | Story => Rectangle | Chore => Parallelogram
+    := tenths = ?= it.priority ?| P0 => 40i32 | P1 => 25i32 | P2 => 15i32 | Later => 10i32
+    := border = ?= it.priority ?| P0 => "#B00020" | _ => "#333333"
+    := stroke = ?= it.work ?| Chore => Dashed | _ => Solid
+    { shape = shape; fill = status_fill it.status; border = border; stroke = stroke; tenths = tenths; ink = "#000000" }
+
+:~ shortened (n : i32) (s : string) : string = ? (sm'::length s : i32) > n ?> sm'::slice 0i32 (n - 2i32) s ++# "..." |: s
+
+:~ item_box (it : item) : box =
+    := font = ?= it.work ?| Epic => 18i32 | Feature => 14i32 | _ => 12i32
+    := second = shortened 52i32 ("[" ++# area_name it.area ++# "] " ++# it.title)
+    := heavy = ?= it.work ?| Epic => !+ | Feature => !+ | _ => !-
+    := id_width = (sm'::length it.id : i32) * font * 62i32 / 100i32 + 16i32
+    := text_width = (sm'::length second : i32) * font * (? heavy ?> 62i32 |: 56i32) / 100i32 + 24i32
+    := base = ? id_width > text_width ?> id_width |: text_width
+    := wide = ?= it.work ?| Chore => base + 24i32 | Epic => base * 118i32 / 100i32 + 10i32 | _ => base
+    := high = (?= it.work ?| Epic => 44i32 | Feature => 32i32 | _ => 26i32) + 16i32
+    { id = it.id; title = it.id; lines = [second]; style = item_style it; width = wide; height = high; font = font; bold = heavy }
+
+:~ known (ids : list string) (id : string) : bool = ids |> any_of (\ (x : string) => x =. id)
+
+:~ legend () : list legend_entry =
+    := plain = \ shape stroke => { shape = shape; fill = "#FFFFFF"; border = "#333333"; stroke = stroke; tenths = 15i32; ink = "#000000" }
+    := filled = \ fill => { shape = Rectangle; fill = fill; border = "#333333"; stroke = Solid; tenths = 10i32; ink = "#000000" }
+    [
+        Swatch ("Epic", plain Hexagon Solid);
+        Swatch ("Feature", plain RoundRectangle Solid);
+        Swatch ("Story", plain Rectangle Solid);
+        Swatch ("Task", plain Parallelogram Dashed);
+        Swatch ("Planned", filled (status_fill Planned));
+        Swatch ("Active", filled (status_fill Active));
+        Swatch ("Blocked", filled (status_fill Blocked));
+        Swatch ("Paused", filled (status_fill Paused));
+        Swatch ("Done", filled (status_fill Done));
+        Swatch ("priority P0", { shape = Rectangle; fill = "#FFFFFF"; border = "#B00020"; stroke = Solid; tenths = 40i32; ink = "#000000" });
+        Swatch ("priority P1", { shape = Rectangle; fill = "#FFFFFF"; border = "#333333"; stroke = Solid; tenths = 25i32; ink = "#000000" });
+        Stroke ("prerequisite -> dependent", { color = "#55606B"; stroke = Solid; tenths = 12i32; head = Standard })
+    ]
+
+:~ backlog_diagram (items : list item) : diagram =
+    := ids = items |> listm::map (\ (it : item) => it.id)
+    := links =
+        items
+        |> listm::fold (\ acc (it : item) =>
+            it.deps |> listm::fold (\ acc' (d : string) =>
+                ? known ids d && not (d =. it.id)
+                ?> { source = d; target = it.id; label = ""; style = { color = "#55606B"; stroke = Solid; tenths = 12i32; head = Standard } } :: acc'
+                |: acc') acc) []
+        |> listm::rev
+    {
+        title = "i574n backlog - " ++# show_i32 (listm::length items : i32) ++# " items, " ++# show_i32 (listm::length links : i32) ++# " dependencies (docs/backlog/state/agile.spi)"
+        subtitle = "Layout: yEd Compact Orthogonal, aspect 1.2, grid 10 (headless yFiles). Node text: ID / [area] title. Arrow = prerequisite -> dependent."
+        legend = legend ()
+        members = items |> listm::map (\ (it : item) => Leaf (item_box it))
+        links = links
+    }

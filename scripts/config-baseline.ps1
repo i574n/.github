@@ -12,6 +12,7 @@ $p = $env:USERPROFILE
 $fileTargets = @(
     "$p\.gitconfig", "$p\.wslconfig", "$p\.npmrc", "$p\.config\scoop\config.json",
     "$p\.config\remote-machines.json", "$p\.ssh\config", "$p\.claude\settings.json",
+    "$p\.claude\hooks\subagent-hold.ps1",
     "$p\scoop\shims\shovel.ps1", "$p\scoop\shims\scoop-xelatex.ps1",
     "$p\scoop\persist\notepadplusplus\session.xml", "$p\scoop\persist\notepadplusplus\config.xml",
     "$env:APPDATA\Microsoft\Spelling\neutral\default.dic",

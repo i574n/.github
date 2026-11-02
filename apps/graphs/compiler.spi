@@ -1,0 +1,97 @@
+:< sm'_operators
+:< host
+:< graph
+:< compiler_model
+
+:~ same_region (a : region) (b : region) : bool = (info_of_region a).key =. (info_of_region b).key
+
+:~ under (r : region) (child : region) : bool =
+    ?= (info_of_region child).parent ?|
+    | Under p => same_region p r
+    | TopLevel => !-
+
+:~ ^ top_of (r : region) : region =
+    ?= (info_of_region r).parent ?|
+    | Under (RWhole) => r
+    | Under p => top_of p
+    | TopLevel => r
+
+:~ build_of (r : region) : build =
+    ?= top_of r ?|
+    | RSf => SingleFlight
+    | RHs => Hopacsota
+    | _ => Shared
+
+:~ header_of (r : region) : string =
+    ?= top_of r ?|
+    | RSf => "#2E7D32"
+    | RHs => "#E65100"
+    | RSeams => "#0D47A1"
+    | _ => ? same_region (top_of r) r ?> "#000000" |: "#37474F"
+
+:~ fill_of (r : region) : string =
+    ?= r ?|
+    | RInfra => "#F5F5F5"
+    | RFront => "#E8F5E9"
+    | RProj => "#E0F7FA"
+    | RTyping => "#F3E5F5"
+    | RPrep => "#FCE4EC"
+    | RPe => "#EDE7F6"
+    | RSeams => "#E3F2FD"
+    | RSf => "#E8F5E9"
+    | RHs => "#FFF3E0"
+    | RDiverge => "#FFFDE7"
+    | RCodegen => "#E1F5FE"
+    | RServer => "#ECEFF1"
+    | REnv => "#FAFAFA"
+    | _ => "#FFFFFF"
+
+:~ frame_of (r : region) : frame =
+    := info = info_of_region r
+    := nested = not (same_region (top_of r) r)
+    := label = ? info.subtitle =. "" ?> info.title |: info.title ++# "  -  " ++# info.subtitle
+    { id = info.key; label = label; fill = fill_of r; header = header_of r; dashed = nested; font = ? nested ?> 18i32 |: 26i32 }
+
+:~ box_of (p : part) : box =
+    := info = info_of_part p
+    := wrap_at = ?= info.kind ?| Note => 52i32 | _ => 40i32
+    sized_box info.key info.title info.detail (kind_style_in info.kind (build_of info.region)) wrap_at
+
+:~ ^ members_of (r : region) : list member =
+    := groups = regions () |> listm::fold (\ acc (child : region) => ? under r child ?> Nest (frame_of child, members_of child) :: acc |: acc) [] |> listm::rev
+    := leaves = parts () |> listm::fold (\ acc (p : part) => ? same_region (info_of_part p).region r ?> Leaf (box_of p) :: acc |: acc) [] |> listm::rev
+    listm::append groups leaves
+
+:~ link_of (r : relation part) : link =
+    { source = (info_of_part r.source).key; target = (info_of_part r.target).key; label = r.label; style = link_style r.kind }
+
+:~ legend () : list legend_entry =
+    [
+        Swatch ("seam API", kind_style Api);
+        Swatch ("single-flight impl", kind_style_in Impl SingleFlight);
+        Swatch ("hopacsota impl", kind_style_in Impl Hopacsota);
+        Swatch ("peval operation", kind_style Op);
+        Swatch ("state / data", kind_style Data);
+        Swatch ("type", kind_style Type);
+        Swatch ("divergence note", kind_style Note);
+        Swatch ("env switch", kind_style Cfg);
+        Swatch ("error", kind_style Err);
+        Stroke ("pipeline", link_style Flow);
+        Stroke ("call", link_style Call);
+        Stroke ("data", link_style DataFlow);
+        Stroke ("-> single-flight", link_style ToSingleFlight);
+        Stroke ("-> hopacsota", link_style ToHopacsota);
+        Stroke ("engine", link_style Engine);
+        Stroke ("reuse", link_style Reuse);
+        Stroke ("note", link_style NoteLink)
+    ]
+
+:~ compiler_diagram () : diagram =
+    := links = relations () |> listm::map link_of
+    {
+        title = "spiral_compiler.fs - single-flight vs hopacsota partial evaluation, and the compiler around it (" ++# show_i32 (listm::length (parts ()) : i32) ++# " elements, " ++# show_i32 (listm::length links : i32) ++# " relations)"
+        subtitle = "Layout: yEd Incremental Hierarchic, left to right, generic edge labeling (headless yFiles). Every box cites its line in spiral/apps/compiler/spiral_compiler.fs."
+        legend = legend ()
+        members = members_of RWhole
+        links = links
+    }
