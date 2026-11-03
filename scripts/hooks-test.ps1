@@ -1,5 +1,5 @@
 param([string] $Root = (Join-Path $env:TEMP 'kit-hooks-test'))
-$hooks = 'C:\Users\i574n\.claude\hooks'
+$hooks = (Join-Path $HOME '.claude\hooks')
 $failed = 0
 function Check([bool] $ok, [string] $label) {
     if (-not $ok) { $script:failed++ }
@@ -12,8 +12,8 @@ Remove-Item -Recurse -Force $Root -ErrorAction Ignore
 $leaseFile = Join-Path $env:LOCALAPPDATA ('kit\tree-leases\probe-' + $PID + '.lease')
 Set-Content $leaseFile "root=$Root`npid=$PID`nholder=hooks-test`nsince=$(Get-Date -Format HH:mm)"
 $cases = @(
-    @('allow', "& $Root\kit.exe agile note C:\home\git\i574n.github\docs\backlog X ""y"" --as tibia 2>&1"),
-    @('allow', "$Root/kit.exe agile set C:\home\git\i574n.github\docs\backlog X 50 Active 2>`$null"),
+    @('allow', "& $Root\kit.exe agile note C:\some\backlog X ""y"" --as tibia 2>&1"),
+    @('allow', "$Root/kit.exe agile set C:\some\backlog X 50 Active 2>`$null"),
     @('allow', "Get-Content $Root\src\kit_jobs\host.spi 2>`$null | Select-Object -First 3"),
     @('allow', "& $Root\kit.exe job list *> `$null"),
     @('allow', "`$n=@'`nnote naming $Root and Move-Item and copy`n'@; kit.exe agile note C:\x ID `$n --as kit"),
@@ -50,6 +50,8 @@ if (`$joined -match '^agile list .* --json') { '{"tasks":[{"id":"USER-1","assign
 if (`$joined -match '^agile next .* --any') {
     if (`$env:STUB_ANY_MODE -eq 'old') { [Console]::Error.WriteLine('kit error: agile next rejected: unexpected argument --any'); exit 2 }
     if (`$env:STUB_ANY_MODE -eq 'none') { 'kit agile next ok claimed=none reason=all-leased wip=3'; exit 3 }
+    if (`$env:STUB_ANY_MODE -eq 'foreign') { 'kit agile next ok claimed=OTHER-1 owner=x expires=2026-11-02T23:00Z ttl_min=90 wip=1 rank=1'; 'item OTHER-1 P0 D2 Active fiscal another team''s in-flight item'; 'last-note none'; 'paths none'; exit 0 }
+    if (`$env:STUB_ANY_MODE -eq 'neutral') { 'kit agile next ok claimed=FREE-1 owner=x expires=2026-11-02T23:00Z ttl_min=90 wip=1 rank=1'; 'item FREE-1 P1 D2 Planned - an untagged item'; 'last-note none'; 'paths none'; exit 0 }
     'kit agile next ok claimed=TEST-1 owner=x expires=2026-11-02T23:00Z ttl_min=90 wip=1 rank=1'
     'item TEST-1 P0 D2 Planned kit the claimed test item'
     'last-note none'
@@ -103,6 +105,15 @@ Check ($r.json.decision -eq 'block' -and $r.json.reason -notmatch 'CLAIMED' -and
 Reset-Stamps
 $r = Gate @{ STUB_ANY_MODE = 'none' }
 Check ($r.json.decision -eq 'block' -and $r.json.reason -notmatch 'CLAIMED') 'an empty queue (exit 3) still blocks with the light list'
+Check ($r.json.reason -match 'the backlog is shared' -and $r.json.reason -match 'agile next .* --open 10') 'without a claim, the block points at any team''s ready items'
+
+Reset-Stamps
+$r = Gate @{ STUB_ANY_MODE = 'foreign' }
+Check ($r.json.reason -notmatch 'CLAIMED' -and $r.json.reason -match 'KIT-LIGHT') 'an item tagged for another team is not handed to this lane'
+Check (@($r.calls | Where-Object { $_ -match '^agile release .* OTHER-1 --as kit-abcdef12' }).Count -eq 1) 'the foreign claim is released at once, so its owner keeps it'
+Reset-Stamps
+$r = Gate @{ STUB_ANY_MODE = 'neutral' }
+Check ($r.json.reason -match 'CLAIMED FOR YOU' -and $r.json.reason -match 'FREE-1' -and @($r.calls | Where-Object { $_ -match '^agile release' }).Count -eq 0) 'an untagged item is lane-neutral and stays claimed'
 
 Reset-Stamps
 $r = Gate @{ STUB_DELAY_MS = '4000' }
@@ -128,6 +139,35 @@ Remove-Item (Join-Path $dir 'disarmed')
 Remove-Item (Join-Path $dir 'standing.txt')
 Check ((Gate @{}).text -eq '') 'no standing order is silent (not armed on purpose)'
 
+"== kit style check (lint wiring)"
+$styleRoot = Join-Path $Root 'style'
+[void][IO.Directory]::CreateDirectory((Join-Path $styleRoot 'src\pkg_a'))
+[void][IO.Directory]::CreateDirectory((Join-Path $styleRoot 'standards'))
+Set-Content (Join-Path $styleRoot 'src\pkg_a\x.spi') ':= x () : i32 = 1i32'
+Set-Content (Join-Path $styleRoot 'standards\census.spi') ''
+Set-Content (Join-Path $styleRoot 'standards\lint-macros.spi') 'inl lint_known_1 () = LintKnown ("pkg_a/x.spi", "known", "cast")'
+$styleStub = Join-Path $Root 'stub-style-kit.ps1'
+Set-Content $styleStub @"
+`$joined = `$args -join ' '
+if (`$joined -match '^standards --ratchet') { 'kit standards ratchet ok packages=1 regressions=0'; exit 0 }
+if (`$joined -match '^lint macros') { "x.spi:3  known  cast   ```$'known_cast as i32'"; "x.spi:7  fresh  cast   ```$'fresh_cast as i32'"; 'failed  files 1  macros 2  violations 2  new 2'; exit 1 }
+exit 0
+"@
+function Style([string] $added, [string] $kitPath = $styleStub) {
+    $env:KIT_STYLE_ROOT = $styleRoot; $env:KIT_STYLE_KIT = $kitPath
+    $p = @{ tool_name = 'Edit'; tool_input = @{ file_path = (Join-Path $styleRoot 'src\pkg_a\x.spi'); old_string = 'x'; new_string = $added } } | ConvertTo-Json -Compress
+    $err = ($p | pwsh -NoProfile -NonInteractive -File (Join-Path $hooks 'kit-style-check.ps1') 2>&1 | Out-String)
+    [pscustomobject]@{ code = $LASTEXITCODE; text = $err }
+}
+$r = Style ":= f () : i32 = `$'fresh_cast as i32' : i32"
+Check ($r.code -eq 2 -and $r.text -match 'lint: pkg_a/x\.spi:7 cast fresh') 'a new host macro violation in the added text is reported with its package path'
+$r = Style ":= k () : i32 = `$'known_cast as i32' : i32"
+Check ($r.text -notmatch 'lint:') 'a violation already in the lint baseline is not reported'
+$r = Style ':= plain () : i32 = 2i32'
+Check ($r.code -eq 0) 'a violation outside the added text does not block the edit'
+$r = Style ":= f () : i32 = `$'fresh_cast as i32' : i32" (Join-Path $Root 'missing-kit.exe')
+Check ($r.text -notmatch 'lint:') 'without a kit binary the lint check fails open'
+Remove-Item env:KIT_STYLE_ROOT, env:KIT_STYLE_KIT -ErrorAction Ignore
 foreach ($k in @('AUTONOMOUS_GATE_DIR', 'AUTONOMOUS_GATE_KIT', 'AUTONOMOUS_GATE_TEST_CPU', 'KIT_LANE', 'STUB_ANY_MODE')) { Remove-Item "env:$k" -ErrorAction Ignore }
 Remove-Item -Recurse -Force $Root -ErrorAction Ignore
 "hooks-test: $failed failed"

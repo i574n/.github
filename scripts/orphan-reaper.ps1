@@ -11,6 +11,7 @@ param(
     [string[]] $ShellClasses = @('pwsh', 'powershell', 'conhost'),
     [int] $ShellMinAgeMinutes = 720,
     [string[]] $PreserveCmdMatch = @('claude-boost-watcher', 'profile-mirror\.ps1', 'orphan-reaper', 'wsl-policy'),
+    [int] $MirrorStuckMinutes = 30,
     [switch] $DryRun
 )
 $ErrorActionPreference = 'Stop'
@@ -34,6 +35,15 @@ foreach ($v in $victims) {
         Stop-Process -Id $v.ProcessId -Force -ErrorAction SilentlyContinue
     }
     $report.Add($line)
+}
+$stuckMirror = $all | Where-Object { $_.Name -eq 'pwsh.exe' -and "$($_.CommandLine)" -match 'profile-mirror\.ps1' -and [int]$_.ProcessId -ne $PID -and ((Get-Date) - $_.CreationDate).TotalMinutes -gt $MirrorStuckMinutes }
+foreach ($m in $stuckMirror) {
+    $age = [int]((Get-Date) - $m.CreationDate).TotalMinutes
+    if (-not $DryRun) {
+        $all | Where-Object { [int]$_.ParentProcessId -eq [int]$m.ProcessId } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Stop-Process -Id $m.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+    $report.Add("stuck-mirror $($m.ProcessId) ${age}min (>${MirrorStuckMinutes}m) reaped")
 }
 $verb = if ($DryRun) { 'would reap' } else { 'reaped' }
 $summary = "orphan-reaper $(Get-Date -Format 'yyyy-MM-dd HH:mm') $verb $($report.Count) (min-age ${MinAgeMinutes}m)"

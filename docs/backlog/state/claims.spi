@@ -1,0 +1,6 @@
+///- --no-respell
+union rec claim_paths =
+    | NoPaths :: claim_paths
+    | PathThen :: string * claim_paths -> claim_paths
+union agile_claim =
+    | Claim :: string * string * u64 * claim_paths -> agile_claim

@@ -1,4 +1,4 @@
-. C:\home\git\i574n.github\scripts\safe-delete.ps1
+. $(Join-Path $PSScriptRoot 'safe-delete.ps1')
 $results = [Collections.Generic.List[string]]::new()
 function Expect-Refused([string] $label, [scriptblock] $action) {
     try { & $action | Out-Null; $results.Add("FAIL $label (allowed)") } catch { $results.Add("PASS $label refused: $($_.Exception.Message)") }
@@ -18,12 +18,12 @@ Expect-Refused 'AppData (contains LOCALAPPDATA)' { Assert-SafeDeleteRoot (Join-P
 Expect-Refused 'another profile' { Assert-SafeDeleteRoot 'C:\Users\Public' }
 Expect-Refused 'another profile AppData' { Assert-SafeDeleteRoot 'C:\Users\Public\AppData' }
 Expect-Refused 'another profile Local\Temp' { Assert-SafeDeleteRoot 'C:\Users\Public\AppData\Local\Temp' }
-Expect-Refused 'Under equal to its base' { Assert-SafeDeleteRoot 'C:\home\data' -Under 'C:\home\data' }
-Expect-Refused 'outside Under' { Assert-SafeDeleteRoot 'C:\home\git\spiral' -Under 'C:\home\data' }
-Expect-Refused 'Under prefix trick' { Assert-SafeDeleteRoot 'C:\home\data-evil\x' -Under 'C:\home\data' }
-$stripped = pwsh -NoProfile -Command ". C:\home\git\i574n.github\scripts\safe-delete.ps1; Remove-Item Env:TEMP, Env:TMP; try { Assert-SafeDeleteRoot ([IO.Path]::GetTempPath()); 'ALLOWED' } catch { 'refused: ' + `$_.Exception.Message }"
+Expect-Refused 'Under equal to its base' { Assert-SafeDeleteRoot 'C:\sandbox' -Under 'C:\sandbox' }
+Expect-Refused 'outside Under' { Assert-SafeDeleteRoot 'C:\elsewhere\spiral' -Under 'C:\sandbox' }
+Expect-Refused 'Under prefix trick' { Assert-SafeDeleteRoot 'C:\sandbox-evil\x' -Under 'C:\sandbox' }
+$stripped = pwsh -NoProfile -Command ". $(Join-Path $PSScriptRoot 'safe-delete.ps1'); Remove-Item Env:TEMP, Env:TMP; try { Assert-SafeDeleteRoot ([IO.Path]::GetTempPath()); 'ALLOWED' } catch { 'refused: ' + `$_.Exception.Message }"
 $results.Add("$(if ($stripped -like 'refused*') { 'PASS' } else { 'FAIL' }) temp root with TEMP and TMP stripped (GetTempPath = profile): $stripped")
-$allStripped = pwsh -NoProfile -Command ". C:\home\git\i574n.github\scripts\safe-delete.ps1; Remove-Item Env:TEMP, Env:TMP, Env:USERPROFILE, Env:LOCALAPPDATA, Env:APPDATA; `$r = foreach (`$p in 'C:\Users\i574n', 'C:\Users\i574n\AppData\Local', 'C:\Users') { try { Assert-SafeDeleteRoot `$p | Out-Null; 'ALLOWED ' + `$p } catch { 'refused' } }; `$r -join ','"
+$allStripped = pwsh -NoProfile -Command ". $(Join-Path $PSScriptRoot 'safe-delete.ps1'); Remove-Item Env:TEMP, Env:TMP, Env:USERPROFILE, Env:LOCALAPPDATA, Env:APPDATA; `$r = foreach (`$p in 'C:\Users\Public', 'C:\Users\Public\AppData\Local', 'C:\Users') { try { Assert-SafeDeleteRoot `$p | Out-Null; 'ALLOWED ' + `$p } catch { 'refused' } }; `$r -join ','"
 $results.Add("$(if ($allStripped -notmatch 'ALLOWED') { 'PASS' } else { 'FAIL' }) profile, LocalAppData and Users refused with USERPROFILE/LOCALAPPDATA/APPDATA/TEMP/TMP all stripped: $allStripped")
 $scratch = Join-Path $PSScriptRoot "safe-delete-probe-$PID"
 New-Item -ItemType Directory -Force (Join-Path $scratch 'inner') | Out-Null

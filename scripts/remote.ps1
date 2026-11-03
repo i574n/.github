@@ -149,7 +149,6 @@ else { $a = (Get-Content /proc/stat -TotalCount 1).Split(' ', [StringSplitOption
             "`$runner = [Environment]::GetEnvironmentVariable('SPIRAL_EXE', 'User') ?? `$env:SPIRAL_EXE; if (`$runner -and (Test-Path `$runner)) { 'node runner   {0} {1:yyyy-MM-dd HH:mm} {2}' -f (Get-FileHash `$runner).Hash.Substring(0, 16), (Get-Item `$runner).LastWriteTime, `$runner } else { 'node runner   (SPIRAL_EXE unset or missing)' }"
             "`$core = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'spiral-bin' 'bin' 'single-flight' 'SpiralCompiler' 'Release' 'net11.0' 'SpiralCompilerCore.dll'; if (Test-Path `$core) { 'node compiler {0} {1:yyyy-MM-dd HH:mm}' -f (Get-FileHash `$core).Hash.Substring(0, 16), (Get-Item `$core).LastWriteTime } else { 'node compiler (missing)' }"
             "`$spiral = Join-Path $(ConvertTo-PwshLiteral $target.gitRoot) 'spiral'; `$lib = @(Get-ChildItem (Join-Path `$spiral 'lib' 'spiral') -Recurse -File -Include *.spi,*.spir -ErrorAction SilentlyContinue | Sort-Object FullName); 'node checkout {0} lib {1} files {2}' -f (git -C `$spiral rev-parse --short=8 HEAD), `$lib.Count, [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes((`$lib | ForEach-Object { '{0}={1}' -f `$_.FullName.Substring(`$spiral.Length).Replace('/', '\'), `$_.Length }) -join '|'))).Substring(0, 16)"
-            "if (`$IsWindows) { `$arch = Get-ChildItem 'C:\home\profile-mirror\profile-mirror-*.tgz' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1 } else { `$arch = `$null }; if (`$arch) { 'node mirror   {0:yyyy-MM-dd HH:mm} {1:N0}min-ago {2:N0}MB' -f `$arch.LastWriteTime, ((Get-Date) - `$arch.LastWriteTime).TotalMinutes, (`$arch.Length / 1MB) } else { 'node mirror   (no profile-mirror archive)' }"
         ) -join "`n")
         $boxRunner = @([Environment]::GetEnvironmentVariable('SPIRAL_EXE', 'User'), (Join-Path $gitRoot 'spiral\workspace\target\release\spiral.exe')) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
         $boxCore = Join-Path ($env:SPIRAL_BIN_CACHE_DIR ?? (Join-Path $env:LOCALAPPDATA 'spiral-bin')) 'bin\single-flight\SpiralCompiler\Release\net11.0\SpiralCompilerCore.dll'
@@ -159,27 +158,27 @@ else { $a = (Get-Content /proc/stat -TotalCount 1).Split(' ', [StringSplitOption
         $boxLib = @(Get-ChildItem (Join-Path $boxSpiral 'lib\spiral') -Recurse -File -Include *.spi, *.spir -ErrorAction SilentlyContinue | Sort-Object FullName)
         'box  checkout {0} lib {1} files {2}' -f (git -C $boxSpiral rev-parse --short=8 HEAD), $boxLib.Count, [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes((($boxLib | ForEach-Object { '{0}={1}' -f $_.FullName.Substring($boxSpiral.Length), $_.Length }) -join '|')))).Substring(0, 16)
         'runner, compiler and checkout lines must match between node and box for comparable gate verdicts (memory node-stale-compiler-dll)'
-        $libDigest = @'
-function Get-LibDigest([string] $spiral) {
-    $seen = @((git -C $spiral ls-files -- lib/spiral) + (git -C $spiral ls-files -o --exclude-standard -- lib/spiral))
-    $files = @($seen | Where-Object { $_ -match '\.spir?$' -and (Test-Path -LiteralPath (Join-Path $spiral $_) -PathType Leaf) } | Sort-Object -Unique -Culture 'en-US')
-    $lines = $files | ForEach-Object { '{0} {1}' -f $_, (Get-FileHash -LiteralPath (Join-Path $spiral $_)).Hash }
+        $coreDigest = @'
+function Get-CoreDigest([string] $core) {
+    if (-not (Test-Path -LiteralPath $core)) { return 'missing' }
+    $lines = Get-ChildItem -LiteralPath $core -Recurse -File | Sort-Object { $_.FullName.Substring($core.Length).Replace('/', '\') } -Culture 'en-US' | ForEach-Object { '{0} {1}' -f $_.FullName.Substring($core.Length).Replace('/', '\'), (Get-FileHash -LiteralPath $_.FullName).Hash }
     [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($lines -join "`n")))).Substring(0, 16)
 }
 '@
-        . ([scriptblock]::Create($libDigest))
-        $boxRoute = Get-LibDigest $boxSpiral
-        $route = Join-RemotePath $target.gitRoot 'polyglot' 'deps' 'spiral'
-        $nodeRoute = "$(Invoke-Remote ($libDigest + "`nif (Test-Path $(ConvertTo-PwshLiteral $route)) { Get-LibDigest $(ConvertTo-PwshLiteral $route) } else { 'missing' }"))".Trim()
-        if ($nodeRoute -eq $boxRoute) { 'polyglot route lib {0} matches the box (content digest)' -f $nodeRoute }
-        else { 'ROUTE-STALE polyglot\deps\spiral lib {0} vs box {1}: node runs that resolve lib through polyglot typecheck against another lib (NODE-SHARED-CHECKOUT-STALE)' -f $nodeRoute, $boxRoute; exit 6 }
+        . ([scriptblock]::Create($coreDigest))
+        $boxCoreDir = Join-Path $boxSpiral 'deps\The-Spiral-Language\VS Code Plugin\core'
+        $nodeCoreDir = Join-RemotePath $target.gitRoot 'spiral' 'deps' 'The-Spiral-Language' 'VS Code Plugin' 'core'
+        $boxCoreDigest = Get-CoreDigest $boxCoreDir
+        $nodeCoreDigest = "$(Invoke-Remote ($coreDigest + "`nGet-CoreDigest $(ConvertTo-PwshLiteral $nodeCoreDir)"))".Trim()
+        if ($nodeCoreDigest -eq $boxCoreDigest) { 'deps core {0} matches the box (content digest)' -f $nodeCoreDigest }
+        else { 'DEPS-CORE-STALE deps\The-Spiral-Language core {0} vs box {1}: node compiles resolve |core- there, so they typecheck against another core (NODE-CORE-COPY-DRIFT)' -f $nodeCoreDigest, $boxCoreDigest; exit 6 }
         exit $script:remoteExit
     }
     'verify' {
         if ($Rest.Count -lt 1) { throw 'remote.ps1 <machine> verify <repo> [-Mirror <name>] [path ...]' }
         $repo = $Rest[0]
         $localRepo = Join-Path $gitRoot $repo
-        $mirrorRoot = if ($target.mirrorBase) { $target.mirrorBase } else { 'C:\home\remote' }
+        $mirrorRoot = if ($target.mirrorBase) { $target.mirrorBase } else { throw "remote.ps1: machine '$Machine' has no mirrorBase in $Config" }
         $remoteRepo = if ($Mirror) { Join-RemotePath $mirrorRoot $Mirror $repo } else { Join-RemotePath $target.gitRoot $repo }
         $paths = @($Rest | Select-Object -Skip 1)
         if (-not $paths.Count) { $paths = @((git -C $localRepo diff --name-only --no-renames HEAD) + (git -C $localRepo ls-files -o --exclude-standard) | Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $localRepo $_) -PathType Leaf) } | Sort-Object -Unique) }
@@ -204,7 +203,7 @@ function Get-LibDigest([string] $spiral) {
         $repo = $Rest[0]
         $localRepo = Join-Path $gitRoot $repo
         $remoteSource = ConvertTo-PwshLiteral (Join-RemotePath $target.gitRoot $repo)
-        $mirrorRoot = if ($target.mirrorBase) { $target.mirrorBase } else { 'C:\home\remote' }
+        $mirrorRoot = if ($target.mirrorBase) { $target.mirrorBase } else { throw "remote.ps1: machine '$Machine' has no mirrorBase in $Config" }
         $remoteRepo = if ($Mirror) { ConvertTo-PwshLiteral (Join-RemotePath $mirrorRoot $Mirror $repo) } else { $remoteSource }
         $stage = ConvertTo-PwshLiteral $target.stage
         $syncToken = "$repo-$PID-$([DateTime]::UtcNow.Ticks)"
