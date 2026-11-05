@@ -112,14 +112,19 @@ function Invoke-Bounded([string] $exe, [string[]] $a, [int] $timeoutMs, [string]
     Remove-Item $errf -Force -ErrorAction SilentlyContinue
     return $code
 }
-$sshOpts = @('-o', 'ConnectTimeout=8', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4')
+$sshOpts = @('-o', 'ConnectTimeout=12', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4')
 $winDir = $RemoteDir -replace '/', '\'
 $reached = $null
 foreach ($route in $Routes) {
     if ((Invoke-Bounded 'ssh' ($sshOpts + @($route, "cmd /c if not exist `"$winDir`" mkdir `"$winDir`"")) 15000 $null) -eq 0) { $reached = $route; break }
 }
 if (-not $reached) { throw "profile-mirror: no route reached the node ($($Routes -join ', ')); the archive stays at $archive" }
-if ((Invoke-Bounded 'scp' (@('-q') + $sshOpts + @($archive, "${reached}:$RemoteDir/")) 600000 $null) -ne 0) { throw "profile-mirror: scp failed/timed out over $reached; the archive stays at $archive" }
+$arcName = Split-Path $archive -Leaf
+if ((Invoke-Bounded 'scp' (@('-q') + $sshOpts + @($archive, "${reached}:$RemoteDir/$arcName.part")) 1800000 $null) -ne 0) {
+    Invoke-Bounded 'ssh' ($sshOpts + @($reached, "cmd /c del /q `"$winDir\$arcName.part`" 2>nul")) 15000 $null | Out-Null
+    throw "profile-mirror: scp failed/timed out over $reached; the archive stays at $archive"
+}
+if ((Invoke-Bounded 'ssh' ($sshOpts + @($reached, "cmd /c move /Y `"$winDir\$arcName.part`" `"$winDir\$arcName`"")) 15000 $null) -ne 0) { throw "profile-mirror: node move of $arcName.part failed over $reached; partial not promoted" }
 $localSize = (Get-Item $archive).Length
 
 $retListOut = [IO.Path]::GetTempFileName()

@@ -109,3 +109,30 @@ $total = [Environment]::ProcessorCount * $SampleSec
 $deltas | Group-Object Name | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Count = $_.Count; BoxPct = [math]::Round(100 * ($_.Group | Measure-Object Cpu -Sum).Sum / $total, 1) } } |
     Where-Object BoxPct -ge 0.5 | Sort-Object BoxPct -Descending | Select-Object -First 12 | Format-Table -AutoSize | Out-String -Width 160
 "box busy: {0:N1}% of all cores" -f (100 * ($deltas | Measure-Object Cpu -Sum).Sum / $total)
+
+"=== per-lane idle gaps, last 6h (gaps >= 10min; ALARM if idle > 25% AND team has ready items; LANE-IDLE-GAPS) ==="
+$idleWinH = 6; $idleCut = (Get-Date).AddHours(-$idleWinH); $idleGapMin = 10
+$teamMap = @{}; $teamsFile = Join-Path $env:USERPROFILE '.claude\autonomous\teams.txt'
+if (Test-Path $teamsFile) { foreach ($ln in Get-Content $teamsFile) { if ($ln -match '^([0-9a-f]+)=(\S+)') { $teamMap[$Matches[1]] = $Matches[2] } } }
+$idleBl = Join-Path $PSScriptRoot '..\docs\backlog'; $idleKit = Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe'; $readyCache = @{}
+function Test-TeamReady([string] $team) {
+    if (-not $team -or $team -eq '(unmapped)') { return $false }
+    if (-not $readyCache.ContainsKey($team)) {
+        $o = & $idleKit agile next $idleBl --team $team --load light,none --open 2>&1 | Out-String
+        $readyCache[$team] = ($o -match 'unblocks=')
+    }
+    $readyCache[$team]
+}
+$projDir = Join-Path $env:USERPROFILE '.claude\projects\C--home-git'
+$rxTs = [regex]'"timestamp":"([0-9T:\-\.Z]{19,})"'
+@(foreach ($jf in Get-ChildItem $projDir -Filter *.jsonl -EA SilentlyContinue | Where-Object { $_.LastWriteTime -gt $idleCut }) {
+    $st = [Collections.Generic.List[datetime]]::new()
+    foreach ($line in [IO.File]::ReadLines($jf.FullName)) { $m = $rxTs.Match($line); if ($m.Success) { try { $t = [datetime]::Parse($m.Groups[1].Value).ToLocalTime(); if ($t -gt $idleCut) { $st.Add($t) } } catch {} } }
+    if ($st.Count -lt 2) { continue }
+    $s = $st | Sort-Object; $idle = 0.0; $long = 0.0
+    for ($i = 1; $i -lt $s.Count; $i++) { $g = ($s[$i] - $s[$i - 1]).TotalMinutes; if ($g -ge $idleGapMin) { $idle += $g; if ($g -gt $long) { $long = $g } } }
+    $u = $jf.BaseName; $team = '(unmapped)'; foreach ($pre in $teamMap.Keys) { if ($u.StartsWith($pre)) { $team = $teamMap[$pre]; break } }
+    $pct = [math]::Round(100 * $idle / ($idleWinH * 60))
+    $flag = if ($pct -gt 25 -and (Test-TeamReady $team)) { 'ALARM idle+ready' } elseif ($pct -gt 25) { 'idle (no ready)' } else { '' }
+    [pscustomobject]@{ Team = $team; IdlePct = $pct; IdleMin = [int]$idle; LongestMin = [int]$long; Flag = $flag }
+}) | Sort-Object IdleMin -Descending | Format-Table -AutoSize | Out-String -Width 120

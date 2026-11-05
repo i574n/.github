@@ -34,16 +34,21 @@
             ++# "{ if ($html -notmatch $mark) { throw \"index lacks $mark\" } }"
     ]
 
-:~ verified_pages_push_job (gate : option string) (owner : string) (minutes : i32) : job =
-    := steps =
+:~ artifacts_download (pattern : string) (path : string) : step =
+    uses "actions/download-artifact" [plain "pattern" pattern; plain "path" path]
+
+:~ verified_pages_push_job_with (extra : list step) (gate : option string) (owner : string) (minutes : i32) : job =
+    := fetched = listm.append [uses "actions/checkout" []; pages_download ()] extra
+    := deployed =
         [
-            uses "actions/checkout" []
-            pages_download ()
             run "echo \"$GITHUB_SHA\" > gh-pages/_deploy.txt"
             uses "peaceiris/actions-gh-pages" (pages_deploy ())
             named_script "verify the deploy is live" None "pwsh" (deploy_check owner)
         ]
-    push_job gate minutes steps
+    push_job gate minutes (listm.append fetched deployed)
+
+:~ verified_pages_push_job (gate : option string) (owner : string) (minutes : i32) : job =
+    verified_pages_push_job_with [] gate owner minutes
 
 :~ pushed () : option string = Some "${{ !cancelled() && github.event_name == 'push' }}"
 

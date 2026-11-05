@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory)][string] $Root,
-    [string[]] $Repos = (@('spiral', 'tibia', 'kit', 'x', 'fiscal', 'i574n.github', 'dice', 'alphabet', 'polyglot') | ForEach-Object { Join-Path $PSScriptRoot "..\..\$_" }),
+    [string[]] $Repos = (@('spiral', 'tibia', 'kit', 'x', 'fiscal', 'i574n.github', 'dice', 'alphabet', 'html', 'regex') | ForEach-Object { Join-Path $PSScriptRoot "..\..\$_" }),
     [string[]] $Extensions = @('.spi', '.spir', '.ps1', '.exs', '.fs', '.rs', '.lua', '.py', '.gleam', '.md'),
     [int] $MinLine = 20,
     [switch] $History,

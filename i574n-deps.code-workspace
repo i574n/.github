@@ -2,7 +2,7 @@
 	"folders": [
 		{
 			"name": "The-Spiral-Language",
-			"path": "../polyglot/deps/The-Spiral-Language"
+			"path": "../spiral/deps/The-Spiral-Language"
 		}
 	],
 	"settings": {

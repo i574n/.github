@@ -1,51 +1,40 @@
-/// ## Tasks (Polyglot)
-:< testing
+:# scheduler static =
+    :< testing
 
 :< sm'_operators
 
-/// ## task_id
 :! task_id = string
 
-/// ## task_name
 :! task_name = string
 
-/// ## manual_scheduling
 :| manual_scheduling =
     | WithSuggestion
     | WithoutSuggestion
 
-/// ## day_offset
 :! day_offset = int
 
-/// ## week_offset
 :! week_offset = int
 
-/// ## month_offset
 :! month_offset = int
 
-/// ## recurrency_offset
 :| recurrency_offset =
     | Days : day_offset
     | Weeks : week_offset
     | Months : month_offset
 
-/// ## fixed_recurrency
 :| fixed_recurrency =
     | Weekly : date_time.day_of_week
     | Monthly : date_time.day
     | Yearly : date_time.day * date_time.month
 
-/// ## recurrency
 :| recurrency =
     | Offset : recurrency_offset
     | Fixed : list fixed_recurrency
 
-/// ## scheduling
 :| scheduling =
     | Manual : manual_scheduling
     | Recurrent : recurrency
 
-/// ## task
 :== task =
     {
         id : task_id
@@ -53,7 +42,6 @@
         scheduling : scheduling
     }
 
-/// ## date
 :== date =
     {
         year : date_time.year
@@ -61,11 +49,9 @@
         day : date_time.day
     }
 
-/// ## status
 :| status =
     | Postponed : option ()
 
-/// ### action
 :| action =
     | SetDate : date
     | AddTask : task
@@ -98,13 +84,13 @@
     ]
 
 ///> zig
-test get_actions =
+:# the_actions_mention_task_00003 =
     get_actions ()
     |> sm'.format_debug
     |> _assert sm'.contains "00003"
 
 ///> zig
-test get_actions_2 =
+:# the_fourth_action_adds_task_00003 =
     get_actions ()
     |> listm'.try_item 3i32
     |> \|
@@ -172,7 +158,7 @@ test get_actions_2 =
     ]
 
 ///> zig
-test cols =
+:# three_columns_print_side_by_side =
     cols ()
     |> print 1i32
     |> console.write_line
@@ -240,5 +226,5 @@ test cols =
         | _ => acc
 
 ///> zig
-test lines =
+:# the_calendar_lines_print =
     lines () |> console.write_line

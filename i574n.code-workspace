@@ -13,10 +13,6 @@
 			"path": "../spiral"
 		},
 		{
-			"name": "polyglot",
-			"path": "../polyglot"
-		},
-		{
 			"name": "alphabet",
 			"path": "../alphabet"
 		},
@@ -28,8 +24,7 @@
 	"settings": {
 		"FSharp.inlayHints.typeAnnotations": false,
 		"rust-analyzer.linkedProjects": [
-			"../spiral/workspace/Cargo.toml",
-			"../polyglot/workspace/Cargo.toml"
+			"../spiral/workspace/Cargo.toml"
 		],
 		"rust-analyzer.procMacro.ignored": {
 			"leptos_macro": [

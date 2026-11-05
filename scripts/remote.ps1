@@ -4,6 +4,8 @@ param(
     [Parameter(Position = 2, ValueFromRemainingArguments)] [string[]] $Rest = @(),
     [string] $Config = (Join-Path $HOME '.config/remote-machines.json'),
     [string] $Mirror,
+    [string] $SpiralMirror,
+    [switch] $Publish,
     [string] $RequireCore,
     [string] $CoreMode = 'single-flight',
     [string] $Script,
@@ -128,6 +130,8 @@ function Get-TreeDigest([string] $root, [string[]] $paths) {
 }
 '@
 
+if ($Publish -and ($Verb -ne 'sync' -or $Mirror -or $Rest[0] -ne 'spiral')) { throw 'remote.ps1: -Publish belongs to sync spiral, without -Mirror (the version names its own mirror)' }
+if ($SpiralMirror -and ($Verb -ne 'sync' -or -not $Mirror)) { throw 'remote.ps1: -SpiralMirror belongs to sync -Mirror <name> of a non-spiral repo' }
 if ($Verb -ne 'run' -and $Script) { throw "remote.ps1: -Script belongs to run (got '$Verb')" }
 if ($Verb -notin 'sync', 'verify' -and ($Mirror -or $Force)) { throw "remote.ps1: -Mirror and -Force belong to sync; on '$Verb' they were taken from the remote command line, which would run without them. Give the remote script a differently named parameter (e.g. -Tree for a mirror path)." }
 switch ($Verb) {
@@ -136,7 +140,7 @@ switch ($Verb) {
         $body = if ($Script) { if ($Rest.Count) { throw 'remote.ps1: run takes either -Script <local file> or a command, not both' }; [IO.File]::ReadAllText((Resolve-Path -LiteralPath $Script).Path) } else { $Rest -join ' ' }
         Invoke-Remote $body; exit $script:remoteExit
     }
-    'job' { if ($RequireCore) { Assert-NodeCore $RequireCore $CoreMode } Invoke-Remote ("& $(ConvertTo-PwshLiteral $target.eoie) job " + (($Rest | ForEach-Object { ConvertTo-PwshLiteral $_ }) -join ' ')); exit $script:remoteExit }
+    'job' { if ($RequireCore) { Assert-NodeCore $RequireCore $CoreMode }; $slots = if ($target.slots) { "`$env:KIT_JOB_SLOTS = '$([int]$target.slots)'; " } else { '' }; Invoke-Remote ($slots + "& $(ConvertTo-PwshLiteral $target.eoie) job " + (($Rest | ForEach-Object { ConvertTo-PwshLiteral $_ }) -join ' ')); exit $script:remoteExit }
     'status' {
         Invoke-Remote (@(
             @'
@@ -213,6 +217,7 @@ function Get-CoreDigest([string] $core) {
         $changed = @($tracked + $untracked | Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $localRepo $_) -PathType Leaf) } | Sort-Object -Unique)
         $deleted = @((git -C $localRepo diff --name-only --diff-filter=D --no-renames -z HEAD) -split "`0" | Where-Object { $_ } | Sort-Object -Unique)
         $digest = if ($changed) { Get-TreeDigest $localRepo $changed } else { 'none' }
+        if ($Publish) { $Mirror = 'spiral-' + $head.Substring(0, 8) + '-' + $digest.Substring(0, [Math]::Min(8, $digest.Length)); $remoteRepo = ConvertTo-PwshLiteral (Join-RemotePath $mirrorRoot $Mirror $repo) }
         "sync $repo -> ${Machine}: head $($head.Substring(0, 8)), $($changed.Count) changed, $($deleted.Count) deleted, digest $digest"
         if (-not $Force -and -not $Mirror) {
             Invoke-Remote "if (& $(ConvertTo-PwshLiteral $target.eoie) job list 50 2>&1 | Where-Object { `$_ -match 'state=(running|queued)' }) { exit 4 }"
@@ -253,7 +258,7 @@ function Get-CoreDigest([string] $core) {
             $remoteDigest
             "`$repo = $remoteRepo; `$stage = $stage"
             "git -C `$repo -c advice.detachedHead=false checkout -q --detach --force $head; if (`$LASTEXITCODE) { exit 5 }"
-            "git -C `$repo clean -fdq"
+            "git -C `$repo clean -fd | ForEach-Object { 'remote-sync pruned untracked ' + (`$_ -replace '^Removing ', '') }"
             "`$changed = @(Get-Content (Join-Path `$stage '$syncToken.changed.txt') | Where-Object { `$_ })"
             "`$deletedLines = @(Get-Content (Join-Path `$stage '$syncToken.deleted.txt') | Where-Object { `$_ })"
             "Remove-Item -LiteralPath (Join-Path `$stage '$syncToken.changed.txt'), (Join-Path `$stage '$syncToken.deleted.txt') -Force -ErrorAction SilentlyContinue"
@@ -269,10 +274,16 @@ function Get-CoreDigest([string] $core) {
         if ($Mirror -and $syncExit -eq 0) {
             Invoke-Remote (@(
                 "`$sdeps = Join-Path $remoteSource 'deps'; `$mdeps = Join-Path $remoteRepo 'deps'"
+                "if ('$repo' -ne 'spiral') {"
+                "  `$sspiral = Join-Path `$sdeps 'spiral'; `$spiralRoot = Join-Path (Split-Path $remoteSource) 'spiral'"
+                "  `$wants = @(Get-ChildItem $remoteRepo -Filter package.spiproj -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-String -Pattern 'deps/spiral' -SimpleMatch -List).Count"
+                "  if (`$wants -and -not (Test-Path `$sspiral) -and (Test-Path `$spiralRoot)) { New-Item -ItemType Directory -Force `$sdeps | Out-Null; New-Item -ItemType `$(if (`$IsWindows) { 'Junction' } else { 'SymbolicLink' }) -Path `$sspiral -Target `$spiralRoot | Out-Null; 'DEPS-SPIRAL-LINKED ' + `$sspiral }"
+                "}"
                 "if ((Test-Path `$sdeps) -and -not @(Get-ChildItem `$mdeps -Force -ErrorAction SilentlyContinue).Count) {"
                 "  if (Test-Path `$mdeps) { Remove-Item `$mdeps -Force -Recurse -ErrorAction SilentlyContinue }"
                 "  New-Item -ItemType `$(if (`$IsWindows) { 'Junction' } else { 'SymbolicLink' }) -Path `$mdeps -Target `$sdeps -ErrorAction SilentlyContinue | Out-Null"
                 "}"
+                $(if ($SpiralMirror -and $repo -ne 'spiral') { "`$smp = $(if ($SpiralMirror -eq 'current') { "Join-Path $(ConvertTo-PwshLiteral $mirrorRoot) (Get-Content -LiteralPath (Join-Path $(ConvertTo-PwshLiteral $mirrorRoot) 'spiral-current.txt') -ErrorAction SilentlyContinue) 'spiral'" } else { ConvertTo-PwshLiteral (Join-RemotePath $mirrorRoot $SpiralMirror 'spiral') }); if (-not (Test-Path `$smp)) { 'SPIRAL-MIRROR-MISSING ' + `$smp; exit 8 }; if (Test-Path `$mdeps) { `$it = Get-Item `$mdeps -Force; if (`$it.LinkType) { `$it.Delete() } else { Get-ChildItem `$mdeps -Force | ForEach-Object { if (`$_.LinkType) { `$_.Delete() } }; `$it.Delete() } }; New-Item -ItemType Directory -Force `$mdeps | Out-Null; New-Item -ItemType `$(if (`$IsWindows) { 'Junction' } else { 'SymbolicLink' }) -Path (Join-Path `$mdeps 'spiral') -Target `$smp | Out-Null; 'MIRROR-SPIRAL-LINKED ' + `$smp" } else { '' })
                 "`$expect = if ('$repo' -eq 'spiral') { Join-Path `$mdeps 'The-Spiral-Language' } else { `$mdeps }"
                 "`$cellsOk = `$true"
                 "if ('$repo' -eq 'spiral') {"
@@ -280,7 +291,7 @@ function Get-CoreDigest([string] $core) {
                 "  if ((Test-Path (Join-Path `$scells 'kino')) -and -not (Test-Path (Join-Path `$mcells 'kino'))) { if (`$IsWindows) { robocopy `$scells `$mcells /E /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null } else { New-Item -ItemType Directory -Force `$mcells | Out-Null; Copy-Item -Recurse -Force (Join-Path `$scells '*') `$mcells } }"
                 "  `$cellsOk = Test-Path (Join-Path `$mcells 'kino')"
                 "}"
-                "if (-not `$cellsOk) { 'MIRROR-DEPS-MISSING (apps\cells\deps has no kino: Cells jobs will fail at mix deps.get)' } elseif ((Test-Path `$expect) -and @(Get-ChildItem `$mdeps -Force -ErrorAction SilentlyContinue).Count) { 'MIRROR-DEPS-OK deps -> shared source' + `$(if ('$repo' -eq 'spiral') { ', apps\cells\deps copied' } else { '' }) } elseif (-not (Test-Path `$sdeps)) { 'MIRROR-DEPS-NONE (the shared source has no deps/)' } else { 'MIRROR-DEPS-MISSING (|core- will fail)' }"
+                "if (-not `$cellsOk) { 'MIRROR-DEPS-MISSING (apps\cells\deps has no kino: Cells jobs will fail at mix deps.get)' } elseif ((Test-Path `$expect) -and @(Get-ChildItem `$mdeps -Force -ErrorAction SilentlyContinue).Count) { 'MIRROR-DEPS-OK deps -> ' + $(if ($SpiralMirror -and $repo -ne 'spiral') { "'spiral mirror $SpiralMirror'" } else { "'shared source'" }) + `$(if ('$repo' -eq 'spiral') { ', apps\cells\deps copied' } else { '' }) } elseif (-not (Test-Path `$sdeps)) { 'MIRROR-DEPS-NONE (the shared source has no deps/)' } else { 'MIRROR-DEPS-MISSING (|core- will fail)' }"
             ) -join "`n")
         }
         $retried = [int]($env:REMOTE_SYNC_RETRIED ?? '0')
@@ -291,6 +302,7 @@ function Get-CoreDigest([string] $core) {
             & $PSCommandPath @PSBoundParameters
             exit $LASTEXITCODE
         }
+        if ($syncExit -eq 0 -and $Publish) { Invoke-Remote "Set-Content -LiteralPath (Join-Path $(ConvertTo-PwshLiteral $mirrorRoot) 'spiral-current.txt') -Value $(ConvertTo-PwshLiteral $Mirror) -NoNewline; 'SPIRAL-PUBLISHED $Mirror'; `$root = $(ConvertTo-PwshLiteral $mirrorRoot); `$linked = @(Get-ChildItem `$root -Directory | ForEach-Object { Get-ChildItem `$_.FullName -Directory -ErrorAction SilentlyContinue } | ForEach-Object { `$d = Join-Path `$_.FullName 'deps' 'spiral'; if (Test-Path `$d) { ""`$((Get-Item `$d -Force).Target)"" } }); `$cmds = if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) { @(Get-CimInstance Win32_Process | ForEach-Object { ""`$(`$_.CommandLine)"" }) } else { @(ps -eo args) }; foreach (`$v in Get-ChildItem `$root -Directory | Where-Object { `$_.Name -match '^spiral-[0-9a-f]{8}-[0-9A-Fa-f]+$' -and `$_.Name -ne $(ConvertTo-PwshLiteral $Mirror) }) { if (-not (`$linked | Where-Object { `$_ -like ""*`$(`$v.Name)*"" }) -and -not (`$cmds | Where-Object { `$_ -like ""*`$(`$v.Name)*"" })) { 'SPIRAL-VERSION-STALE ' + `$v.FullName } }" }
         if ($syncExit -eq 0) { "REMOTE-SYNC-OK $repo on $Machine matches this tree (head $($head.Substring(0, 8)), digest $digest)" }
         exit $syncExit
     }

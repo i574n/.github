@@ -36,7 +36,7 @@ $tar = Join-Path $env:TEMP "critical-$stamp.tar"
 Push-Location $stage; try { tar -cf $tar . 2>&1 | Out-Null } finally { Pop-Location }
 $hash = (Get-FileHash $tar -Algorithm SHA256).Hash.ToLower()
 $sizeMB = [Math]::Round((Get-Item $tar).Length / 1MB, 2)
-$sshOpts = @('-o', 'ConnectTimeout=8', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4')
+$sshOpts = @('-o', 'ConnectTimeout=12', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4')
 $winDir = $RemoteDir -replace '/', '\'
 $reached = $null
 foreach ($route in $Routes) {
@@ -50,7 +50,10 @@ if (-not $reached) {
     Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
     exit 1
 }
-$scpRc = Invoke-Bounded 'scp' (@('-q') + $sshOpts + @($tar, "${reached}:$RemoteDir/")) 60000 $null
+$arcName = "critical-$stamp.tar"
+$scpRc = Invoke-Bounded 'scp' (@('-q') + $sshOpts + @($tar, "${reached}:$RemoteDir/$arcName.part")) 60000 $null
+if ($scpRc -eq 0) { $scpRc = Invoke-Bounded 'ssh' ($sshOpts + @($reached, "cmd /c move /Y `"$winDir\$arcName.part`" `"$winDir\$arcName`"")) 15000 $null }
+else { Invoke-Bounded 'ssh' ($sshOpts + @($reached, "cmd /c del /q `"$winDir\$arcName.part`" 2>nul")) 15000 $null | Out-Null }
 Invoke-Bounded 'ssh' ($sshOpts + @($reached, "cmd /c forfiles /p `"$winDir`" /m critical-*.tar /d -2 /c `"cmd /c del @path`"")) 15000 $null | Out-Null
 Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $tar -Force -ErrorAction SilentlyContinue

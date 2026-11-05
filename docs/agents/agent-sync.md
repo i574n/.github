@@ -80,7 +80,7 @@ A new thread catches up fastest in this order, before opening the backlog's
 ## Fast state checks
 
 - **Repos:** `git -C <repo> status --porcelain` and `git log -1` per checkout.
-  The core repos (spiral, dice, alphabet, polyglot) track `github-i574n/main`
+  The core repos (spiral, dice, alphabet) track `github-i574n/main`
   and also carry `github-fc1943s` and `gitlab-i574n`; the rest use `origin`.
 - **CI:** `gh run list -R i574n/<repo> -L 2 --json <fields>`. In PowerShell put
   the field list in a variable or quotes: a bare `status,conclusion` becomes an
@@ -233,7 +233,7 @@ Small binary payloads (a 14 MB core, a sample dir) that exceed even that go thro
 `sync` carries adds, modifies, deletes and moves (collected with `--no-renames`
 and `--diff-filter=D`, proven by per-file sha256; emptied directories are
 pruned), so a mirror matches your working tree exactly. A spiral `-Mirror` also links
-`deps/` (the untracked The-Spiral-Language/polyglot clones) from the node's
+`deps/` (the untracked The-Spiral-Language clone) from the node's
 shared source after each clean, so `|core-` resolves in the mirror. Cells
 resolves the spiral runner through `SPIRAL_EXE` (persisted on the node's User
 env), not PATH, so the node's canonical `spiral.exe` must be kept freshly built

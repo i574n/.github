@@ -34,6 +34,7 @@
         script : list string
         condition : option string
         guard_first : bool
+        continue_on_error : bool
     }
 
 :| step =
@@ -67,7 +68,7 @@
     Uses { action = action; condition = Some condition; settings = settings }
 
 :~ plain_run (script : list string) : run_step =
-    { id = None; name = None; shell = None; script = script; condition = None; guard_first = false }
+    { id = None; name = None; shell = None; script = script; condition = None; guard_first = false; continue_on_error = false }
 
 :~ run (command : string) : step = Run (plain_run [command])
 
@@ -78,6 +79,10 @@
 :~ run_id (id : string) (condition : option string) (command : string) : step =
     := r = plain_run [command]
     Run { r ?| id = Some id; condition = condition }
+
+:~ soft_run_if (command : string) (condition : string) : step =
+    := r = plain_run [command]
+    Run { r ?| condition = Some condition; continue_on_error = true }
 
 :~ guarded_run (condition : string) (command : string) : step =
     := r = plain_run [command]
@@ -168,12 +173,13 @@
             | line :: [] => [run_key ++# line]
             | lines => (run_key ++# "|") :: listm.map (\ line => "          " ++# line) lines
         := condition = optional_line "        if: " r.condition
+        := soft = ? r.continue_on_error ?> ["        continue-on-error: true"] |: []
         ?= head ?|
-        | _ :: _ => listm.concat [head; condition; optional_line "        shell: " r.shell; body]
+        | _ :: _ => listm.concat [head; condition; optional_line "        shell: " r.shell; body; soft]
         | [] =>
             ?= r.condition ?|
             | Some c when r.guard_first => ("      - if: " ++# c) :: body
-            | _ => listm.concat [body; condition]
+            | _ => listm.concat [body; condition; soft]
     | Uses u =>
         := head = "      - uses: " ++# u.action ++# "@" ++# ref_of u.action
         listm.concat [[head]; optional_line "        if: " u.condition; block "        with:" "          " u.settings]

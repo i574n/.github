@@ -1,6 +1,6 @@
 param(
     [string] $Kit = (Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe'),
-    [string] $Pwsh = (Join-Path $PSHOME 'pwsh.exe'),
+    [string] $Pwsh = (Join-Path $env:USERPROFILE 'scoop\shims\pwsh.exe'),
     [switch] $DryRun
 )
 $ErrorActionPreference = 'Stop'
@@ -10,8 +10,8 @@ $tibiaScripts = Join-Path (Split-Path (Split-Path $PSScriptRoot)) 'tibia\scripts
 $tasks = @(
     @{
         Name = 'kit-unstaged-backup'
-        At = '03:10'
-        Description = "KIT-SCRATCH-WATCH M2: daily verified backup of every tracked repo's staged, unstaged and untracked layer to %LOCALAPPDATA%\kit\backups\unstaged (never deletes)"
+        Every = 120
+        Description = "KIT-SCRATCH-WATCH M2: 2-hourly verified backup of every tracked repo's staged, unstaged and untracked layer to %LOCALAPPDATA%\kit\backups\unstaged (never deletes); the fleet keeps WIP unstaged, so capture cadence is the wipe-exposure ceiling"
         Arguments = "--headless `"$Kit`" job start kit-unstaged-backup 1800000 `"$Pwsh`" -NoProfile -NonInteractive -File $(Join-Path $scripts 'unstaged-backup.ps1') -Verify"
     }
     @{

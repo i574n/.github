@@ -29,7 +29,7 @@ function Invoke-Bounded([string] $exe, [string[]] $a, [int] $timeoutMs, [string]
     Remove-Item $errf -Force -ErrorAction SilentlyContinue
     return $code
 }
-$sshOpts = @('-o', 'ConnectTimeout=8', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4')
+$sshOpts = @('-o', 'ConnectTimeout=12', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4')
 $reached = $null
 foreach ($route in $Routes) {
     if ((Invoke-Bounded 'scp' (@('-q') + $sshOpts + @($nodeScript, "${route}:$RemoteDir/profile-restore-drill-node.ps1")) 30000 $null) -eq 0) { $reached = $route; break }

@@ -10,7 +10,7 @@ if (!$fast) {
     pwsh init.ps1
 }
 
-. ../../polyglot/scripts/core.ps1
+. ../../spiral/scripts/core.ps1
 
 $ProgressPreference = "SilentlyContinue"
 { pwsh pins/pins.ps1 } | Invoke-Block

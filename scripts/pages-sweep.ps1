@@ -1,4 +1,4 @@
-param([string[]] $Repos = @('alphabet', 'dice', 'spiral', 'polyglot', 'x', 'blog', 'dir-tree-html', 'tibia', 'kit', '.github'), [hashtable] $TreePage = @{ blog = 'tree.html' })
+param([string[]] $Repos = @('alphabet', 'dice', 'spiral', 'x', 'blog', 'html', 'regex', 'tibia', 'kit', '.github'), [hashtable] $TreePage = @{ blog = 'tree.html' })
 $ErrorActionPreference = 'Stop'
 $rows = foreach ($repo in $Repos) {
     $url = "https://i574n.github.io/$repo/$($TreePage[$repo])"

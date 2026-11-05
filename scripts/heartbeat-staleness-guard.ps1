@@ -12,10 +12,22 @@ $override = @{
     'profile-restore-drill.last.log'  = 1560
 }
 $now = Get-Date
+$runHeartbeatMax = 40
+$standing = Join-Path $env:USERPROFILE '.claude\autonomous\standing.txt'
+$runActive = $false
+if (Test-Path $standing) {
+    $m = [regex]::Match(((Get-Content -LiteralPath $standing -Raw -ErrorAction SilentlyContinue) + ''), 'until=(\S+)')
+    if ($m.Success) { try { $runActive = ([datetime]::Parse($m.Groups[1].Value) -gt $now) } catch { $runActive = $false } }
+}
 $issues = [Collections.Generic.List[string]]::new()
 $files = Get-ChildItem $dir -Filter '*.last.log' -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne $self }
 foreach ($f in $files) {
-    $max = if ($override.ContainsKey($f.Name)) { $override[$f.Name] } else { $DefaultMaxMinutes }
+    if ($f.Name -like 'autonomous-*') {
+        if (-not $runActive) { continue }
+        $max = $runHeartbeatMax
+    }
+    elseif ($override.ContainsKey($f.Name)) { $max = $override[$f.Name] }
+    else { $max = $DefaultMaxMinutes }
     $age = [int](($now - $f.LastWriteTime).TotalMinutes)
     if ($age -gt $max) { $issues.Add("STALE $($f.Name): ${age}min (> ${max}min) - watcher not writing, likely dead") }
 }

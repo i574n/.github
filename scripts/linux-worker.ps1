@@ -1,7 +1,4 @@
 #requires -Version 7
-<#
-Linux k3s worker over ssh (cloud VM or bare Linux), idempotent. Encoded lessons, parameters and the Spiral-port plan: backlog K3S-EVERYWHERE and PS1-TO-SPIRAL.
-#>
 param(
     [Parameter(Mandatory)] [string] $SshAlias,
     [string[]] $ExemptIp,
