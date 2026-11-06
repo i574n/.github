@@ -73,6 +73,6 @@ $logFile = Join-Path $env:LOCALAPPDATA 'kit\schedules\config-baseline.last.log'
 New-Item -ItemType Directory -Force (Split-Path $logFile) | Out-Null
 Set-Content -LiteralPath $logFile -Value $line
 if ($drift.Count) {
-    if ($NoteOnDrift) { & (Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe') story note (Join-Path $PSScriptRoot '..\docs\backlog') CONFIG-BASELINE "scheduled check: $line" --as config-baseline *> $null }
+    if ($NoteOnDrift) { & (Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe') agile note (Join-Path $PSScriptRoot '..\docs\backlog') CONFIG-BASELINE "scheduled check: $line" --as config-baseline 2>&1 | Out-Null; if ($LASTEXITCODE -ne 0) { Add-Content -LiteralPath $logFile -Value "config-baseline $(Get-Date -Format 'yyyy-MM-dd HH:mm') NOTE FAILED rc=$LASTEXITCODE (CONFIG-BASELINE not delivered)" } }
     exit 1
 }

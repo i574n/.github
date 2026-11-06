@@ -5,7 +5,8 @@
 ---  
 
 **WE HAVE NO IDEA WHAT WE'RE DOING**  
-Look, we tried writing rules. They were bad. Now there are 2,000 "owners" and zero adults in the room. If you’re reading this, you’re probably smarter than us. **Please rewrite this file.**  
+Look, we tried writing rules. They were bad. Now there are 2,000 "owners" and zero adults in the room. If you’re reading
+this, you’re probably smarter than us. **Please rewrite this file.**  
 
 **WHAT WE NEED**  
 

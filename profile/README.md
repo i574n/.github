@@ -1,19 +1,32 @@
 # i574n
 
-i574n is a puzzle wrapped in layers of logic and wonder. It nods to Einstein yet goes far beyond simple scientific references, blending code, ritual, and imagination into an ever-deepening riddle. Think of it like peeling an onion: each layer you peel back challenges what you thought you knew, drawing you closer to the uncharted. In the end, i574n isn’t just a name; it’s an ongoing invitation to explore the unknown and spark new ideas.
+i574n is a puzzle wrapped in layers of logic and wonder. It nods to Einstein yet goes far beyond simple scientific
+references, blending code, ritual, and imagination into an ever-deepening riddle. Think of it like peeling an onion:
+each layer you peel back challenges what you thought you knew, drawing you closer to the uncharted. In the end, i574n
+isn’t just a name; it’s an ongoing invitation to explore the unknown and spark new ideas.
 
-This spirit of deeper discovery links Einstein’s genius with the world of computer programming — both are classified as INTP on Personality Database. This shared label hints at a common thread: the curious mind that reshapes physics also writes inventive code, weaving intellect and creativity together. Whether probing space-time or debugging software, the goal is the same: to dive into the mystery and emerge with fresh possibilities.
+This spirit of deeper discovery links Einstein’s genius with the world of computer programming — both are classified as
+INTP on Personality Database. This shared label hints at a common thread: the curious mind that reshapes physics also
+writes inventive code, weaving intellect and creativity together. Whether probing space-time or debugging software, the
+goal is the same: to dive into the mystery and emerge with fresh possibilities.
 
 **Why Spiral and Notebooks?**
 
-Ordered code is like a well-drilled squad: every type and function steps up in line before it’s needed, making your program crystal clear for both humans and AI. This brutal discipline meshes perfectly with the ethos of literate programming found in modern notebooks, where every cell builds on the previous one to tell a seamless, step-by-step story.
+Ordered code is like a well-drilled squad: every type and function steps up in line before it’s needed, making your
+program crystal clear for both humans and AI. This brutal discipline meshes perfectly with the ethos of literate
+programming found in modern notebooks, where every cell builds on the previous one to tell a seamless, step-by-step
+story.
 
-In contrast, languages like Rust, Go, Elixir, Gleam, and TypeScript let you toss your definitions around like loose cannonballs on a chaotic battlefield. That mess might work for some, but it leaves newcomers wading through a jumbled maze to figure out what’s what. When clarity is the weapon of choice, only the ruthless order of define-before-use will cut through the confusion and reign supreme.
+In contrast, languages like Rust, Go, Elixir, Gleam, and TypeScript let you toss your definitions around like loose
+cannonballs on a chaotic battlefield. That mess might work for some, but it leaves newcomers wading through a jumbled
+maze to figure out what’s what. When clarity is the weapon of choice, only the ruthless order of define-before-use will
+cut through the confusion and reign supreme.
 
 ## Recent works
 
 <https://i574n.github.io/spiral/lib/spiral/physics.spi.html>  
-Implementation of Haskell code samples from the "Learn Physics with Functional Programming" book using the Spiral programming language
+Implementation of Haskell code samples from the "Learn Physics with Functional Programming" book using the Spiral
+programming language
 
 <https://i574n.github.io/dice/ui/dist>  
 <https://github.com/i574n/dice/blob/main/ui/src/dice_ui.spi>  

@@ -109,7 +109,9 @@ A new thread catches up fastest in this order, before opening the backlog's
   `job wait <id> <max-ms>` (exits with the job's code, 124 timed out,
   125 lost or spawn failure, 3 still running), `job status`, `job tail`,
   `job list`. `job start --heavy ...` runs the program inside spiral's
-  `Invoke-Heavy`, so a gated build is both queued and reaper-proof. Run
+  `Invoke-Heavy`, so a gated build is both queued and reaper-proof. Notebook
+  and lib-gate batches start with `--heavy` too: as plain jobs they skip the
+  heavy ticket line and stack on regens and builds (MACHINE-SLOT-CAPS n18). Run
   `job wait` itself as a background shell to get the session's completion
   notice; if the reaper kills that waiting shell, the job keeps running, the
   orphaned `job wait` ends within a second (it watches the shell that started
@@ -146,7 +148,8 @@ A new thread catches up fastest in this order, before opening the backlog's
   count by a,b`, and `dirs <dir>/* having a and b` with indented
   `tag <name> = <file> ~ "re" [and|or|not ...]` lines and `count by <name>`,
   and `diff <a.tsv> <b.tsv> by id,backend [on compile,exit]` (changed cells,
-  added and removed keys; replaces ad-hoc Import-Csv review scripts). Runs: `run <cmd> [timeout 10s]` (cmd /c in the root; stops
+  added and removed keys; replaces ad-hoc Import-Csv review scripts). Runs: `run <cmd> [timeout 10s]` (cmd /c in the
+  root; stops
   the whole tree on timeout), `run <cmd> until output ~ "re" timeout 20s then
   stop`, `run <cmd> background as s1` ... `stop s1`, then `tail output n`,
   `search "re" in output`, `errors in output by "(re)"` (grouped counts with
@@ -297,11 +300,15 @@ licenses, bundled or example skills, caches, templates, archives and trash.
 4. Keep this file about lookup and coordination. Update it when a client's
    storage changes, and add a row for any new client. No per-lane paragraphs,
    transcript dumps or user-specific absolute paths.
+5. Spawn a Claude subagent that must write files or backlog items as `fork`
+   or `general-purpose`: `Explore` is read-only by construction, so its writes
+   come back as text the parent has to apply (backlog `SUBAGENT-SPAWN-HABIT`).
 
 Canonical location: `i574n.github/docs/agents/agent-sync.md`. The `mold` scoop
 bucket is a clone of `i574n/mold` at `~/scoop/buckets/mold`; `fc1943s.github`
 is a workspace hub. A remote kit worker node (`DESKTOP-6E8C14G`, a LAN machine;
-"worker node" / "remote node" for short) runs as a remote kit worker (its binary is still C:\home\bin\eoie.exe with its own job store; the switch waits for an idle node, KIT-RENAME n60), driven
+"worker node" / "remote node" for short) runs as a remote kit worker (its binary is still C:\home\bin\eoie.exe with its
+own job store; the switch waits for an idle node, KIT-RENAME n60), driven
 with `i574n.github/scripts/remote.ps1 <node> run|job|status|sync|fetch` over SSH
 (Tailscale fallback); machines live in `~/.config/remote-machines.json`. Its
 bootstrap and the cross-machine job dispatch live in backlog `REMOTE-WORKER-NODE`

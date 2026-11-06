@@ -73,7 +73,7 @@ $line
 if ($failures.Count) {
     if ($NoteOnFailure) {
         $kit = Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe'
-        & $kit story note (Join-Path $PSScriptRoot '..\docs\backlog') PROFILE-RESTORE-DRILL "scheduled drill $line" --as profile-restore-drill *> $null
+        & $kit agile note (Join-Path $PSScriptRoot '..\docs\backlog') PROFILE-RESTORE-DRILL "scheduled drill $line" --as profile-restore-drill 2>&1 | Out-Null; if ($LASTEXITCODE -ne 0) { Add-Content -LiteralPath $log -Value "profile-restore-drill $(Get-Date -Format 'yyyy-MM-dd HH:mm') NOTE FAILED rc=$LASTEXITCODE (PROFILE-RESTORE-DRILL not delivered)" }
     }
     exit 1
 }

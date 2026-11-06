@@ -62,4 +62,5 @@ Build
 
 ## Contributing
 
-Contributions are welcome! Please see the [CONTRIBUTING.md](https://github.com/i574n/.github/blob/main/CONTRIBUTING.md) for guidelines.
+Contributions are welcome! Please see the [CONTRIBUTING.md](https://github.com/i574n/.github/blob/main/CONTRIBUTING.md)
+for guidelines.

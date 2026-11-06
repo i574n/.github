@@ -9,6 +9,7 @@ param(
     [string] $RequireCore,
     [string] $CoreMode = 'single-flight',
     [string] $Script,
+    [string[]] $Include = @(),
     [switch] $Force
 )
 $ErrorActionPreference = 'Stop'
@@ -131,6 +132,7 @@ function Get-TreeDigest([string] $root, [string[]] $paths) {
 '@
 
 if ($Publish -and ($Verb -ne 'sync' -or $Mirror -or $Rest[0] -ne 'spiral')) { throw 'remote.ps1: -Publish belongs to sync spiral, without -Mirror (the version names its own mirror)' }
+if ($Include.Count -and $Verb -ne 'sync') { throw 'remote.ps1: -Include belongs to sync' }
 if ($SpiralMirror -and ($Verb -ne 'sync' -or -not $Mirror)) { throw 'remote.ps1: -SpiralMirror belongs to sync -Mirror <name> of a non-spiral repo' }
 if ($Verb -ne 'run' -and $Script) { throw "remote.ps1: -Script belongs to run (got '$Verb')" }
 if ($Verb -notin 'sync', 'verify' -and ($Mirror -or $Force)) { throw "remote.ps1: -Mirror and -Force belong to sync; on '$Verb' they were taken from the remote command line, which would run without them. Give the remote script a differently named parameter (e.g. -Tree for a mirror path)." }
@@ -215,7 +217,18 @@ function Get-CoreDigest([string] $core) {
         $tracked = @((git -C $localRepo diff --name-only --no-renames -z HEAD) -split "`0")
         $untracked = @((git -C $localRepo ls-files -o --exclude-standard -z) -split "`0")
         $changed = @($tracked + $untracked | Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $localRepo $_) -PathType Leaf) } | Sort-Object -Unique)
-        $deleted = @((git -C $localRepo diff --name-only --diff-filter=D --no-renames -z HEAD) -split "`0" | Where-Object { $_ } | Sort-Object -Unique)
+        if ($Include.Count) {
+            $rootFull = (Resolve-Path -LiteralPath $localRepo).Path.TrimEnd('\', '/')
+            $extra = @(foreach ($inc in ($Include | ForEach-Object { $_ -split ',' } | Where-Object { $_ })) {
+                $full = Join-Path $rootFull $inc
+                if (-not (Test-Path -LiteralPath $full)) { throw "remote.ps1: -Include $inc does not exist under $repo" }
+                if (Test-Path -LiteralPath $full -PathType Leaf) { $inc.Replace('\', '/') }
+                else { Get-ChildItem -LiteralPath $full -Recurse -File -Force | ForEach-Object { $_.FullName.Substring($rootFull.Length + 1).Replace('\', '/') } }
+            })
+            $changed = @($changed + $extra | Sort-Object -Unique)
+            "include: $($extra.Count) files from $($Include -join ', ') (gitignored inputs travel with the tree and count in the digest)"
+        }
+        $deleted =@((git -C $localRepo diff --name-only --diff-filter=D --no-renames -z HEAD) -split "`0" | Where-Object { $_ } | Sort-Object -Unique)
         $digest = if ($changed) { Get-TreeDigest $localRepo $changed } else { 'none' }
         if ($Publish) { $Mirror = 'spiral-' + $head.Substring(0, 8) + '-' + $digest.Substring(0, [Math]::Min(8, $digest.Length)); $remoteRepo = ConvertTo-PwshLiteral (Join-RemotePath $mirrorRoot $Mirror $repo) }
         "sync $repo -> ${Machine}: head $($head.Substring(0, 8)), $($changed.Count) changed, $($deleted.Count) deleted, digest $digest"

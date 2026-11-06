@@ -145,6 +145,28 @@ if ((Invoke-Bounded 'ssh' ($sshOpts + @($reached, "cmd /c dir /b /o-d `"$winDir\
 }
 Remove-Item $retListOut -Force -ErrorAction SilentlyContinue
 
+# prune dead .tgz.part uploads: scp is 1800s-bounded (line 123) and line 124's 15s delete fails silently
+# when the node is saturated, so a .part whose stamp is > 2h old can never be a live upload -> safe to delete.
+$partListOut = [IO.Path]::GetTempFileName()
+if ((Invoke-Bounded 'ssh' ($sshOpts + @($reached, "cmd /c dir /b /o-d `"$winDir\profile-mirror-*.tgz.part`"")) 20000 $partListOut) -eq 0) {
+    $deadParts = @(
+        @(Get-Content -LiteralPath $partListOut -ErrorAction SilentlyContinue) |
+            Where-Object { $_ -match 'profile-mirror-(\d{8})-(\d{6})\.tgz\.part' } |
+            ForEach-Object {
+                if ($_ -match 'profile-mirror-(\d{8})-(\d{6})\.tgz\.part') {
+                    $t = [datetime]::ParseExact($matches[1] + $matches[2], 'yyyyMMddHHmmss', $null)
+                    if (((Get-Date) - $t).TotalHours -gt 2) { $_.Trim() }
+                }
+            }
+    )
+    if ($deadParts.Count -gt 0) {
+        $delPartArgs = ($deadParts | ForEach-Object { '"' + $winDir + '\' + $_ + '"' }) -join ' '
+        Invoke-Bounded 'ssh' ($sshOpts + @($reached, "del $delPartArgs")) 30000 $null | Out-Null
+        "profile-mirror: pruned $($deadParts.Count) dead .tgz.part upload(s) > 2h old (scp-timeout leak)"
+    }
+}
+Remove-Item $partListOut -Force -ErrorAction SilentlyContinue
+
 $remoteScript = @"
 `$dir = '$RemoteDir'
 `$leaf = 'profile-mirror-$stamp.tgz'

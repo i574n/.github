@@ -24,26 +24,33 @@ function Invoke-Bounded([string] $exe, [string[]] $a, [int] $timeoutMs, [string]
 }
 $sshOpts = @('-o', 'ConnectTimeout=12', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4')
 $box = [int]((Get-CimInstance Win32_Processor | Measure-Object LoadPercentage -Average).Average)
-$mirrorEnc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes('[int]((Get-CimInstance Win32_Processor | Measure-Object LoadPercentage -Average).Average)'))
-$mirrorOut = [IO.Path]::GetTempFileName()
-$mirrorPct = if ($MirrorNode -and (Invoke-Bounded 'ssh' ($sshOpts + @($MirrorNode, "powershell -NoProfile -EncodedCommand $mirrorEnc")) 15000 $mirrorOut) -eq 0) {
-    $v = (Get-Content -LiteralPath $mirrorOut -ErrorAction SilentlyContinue | Where-Object { $_ -match '^\d+$' } | Select-Object -Last 1); if ($v) { [int]$v } else { -1 }
+# try each route until one answers (remote.ps1 pattern): the 'laptop' hostname resolution flakes; laptop-ts/laptop-ip fall back
+function Invoke-NodeRoute([string[]] $routes, [string] $remoteCmd, [int] $timeoutMs) {
+    foreach ($r in $routes) {
+        $o = [IO.Path]::GetTempFileName()
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        $rc = Invoke-Bounded 'ssh' ($sshOpts + @($r, $remoteCmd)) $timeoutMs $o
+        $sw.Stop()
+        if ($rc -eq 0) { $c = @(Get-Content -LiteralPath $o -ErrorAction SilentlyContinue); Remove-Item $o -Force -ErrorAction SilentlyContinue; return @{ ok = $true; route = $r; lines = $c; ms = [int]$sw.ElapsedMilliseconds } }
+        Remove-Item $o -Force -ErrorAction SilentlyContinue
+    }
+    return @{ ok = $false; route = 'none'; lines = @(); ms = 0 }
 }
-else { -1 }
-Remove-Item $mirrorOut -Force -ErrorAction SilentlyContinue
+# mirror node: CPU% and C: free GB in ONE probe over the route-fallback chain
+$mdEnc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes("[int]((Get-CimInstance Win32_Processor|Measure-Object LoadPercentage -Average).Average); [int]((Get-CimInstance Win32_LogicalDisk|Where-Object DeviceID -eq 'C:').FreeSpace/1GB)"))
+$mdR = if ($NodeRoutes) { Invoke-NodeRoute $NodeRoutes "powershell -NoProfile -EncodedCommand $mdEnc" 15000 } else { @{ ok = $false; route = 'none'; lines = @(); ms = 0 } }
+$digits = @($mdR.lines | Where-Object { $_ -match '^\d+$' })
+$mirrorPct = if ($mdR.ok -and $digits.Count -ge 1) { [int]$digits[0] } else { -1 }
+$nodeFreeGb = if ($mdR.ok -and $digits.Count -ge 2) { [int]$digits[1] } else { -1 }
+$mirrorRoute = $mdR.route; $mirrorMs = $mdR.ms
+# compute node (vultr): loadavg / nproc, timed (the -1 cause is likely the 15s bound under box load, not a route)
 $computeOut = [IO.Path]::GetTempFileName()
-$computePct = if ($ComputeNode -and (Invoke-Bounded 'ssh' ($sshOpts + @($ComputeNode, "cut -d' ' -f1 /proc/loadavg; nproc")) 15000 $computeOut) -eq 0) {
-    $vr = @(Get-Content -LiteralPath $computeOut -ErrorAction SilentlyContinue | Where-Object { $_ }); if ($vr.Count -ge 2) { [int]([double]$vr[0] / [int]$vr[1] * 100) } else { -1 }
-}
-else { -1 }
+$computeSw = [Diagnostics.Stopwatch]::StartNew()
+$computeRc = if ($ComputeNode) { Invoke-Bounded 'ssh' ($sshOpts + @($ComputeNode, "cut -d' ' -f1 /proc/loadavg; nproc")) 15000 $computeOut } else { 1 }
+$computeSw.Stop()
+$computePct = if ($computeRc -eq 0) { $vr = @(Get-Content -LiteralPath $computeOut -ErrorAction SilentlyContinue | Where-Object { $_ }); if ($vr.Count -ge 2) { [int]([double]$vr[0] / [int]$vr[1] * 100) } else { -1 } } else { -1 }
+$computeMs = [int]$computeSw.ElapsedMilliseconds
 Remove-Item $computeOut -Force -ErrorAction SilentlyContinue
-$diskEnc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes("[int]((Get-CimInstance Win32_LogicalDisk | Where-Object DeviceID -eq 'C:').FreeSpace/1GB)"))
-$diskOut = [IO.Path]::GetTempFileName()
-$nodeFreeGb = if ($MirrorNode -and (Invoke-Bounded 'ssh' ($sshOpts + @($MirrorNode, "powershell -NoProfile -EncodedCommand $diskEnc")) 15000 $diskOut) -eq 0) {
-    $v = (Get-Content -LiteralPath $diskOut -ErrorAction SilentlyContinue | Where-Object { $_ -match '^\d+$' } | Select-Object -Last 1); if ($v) { [int]$v } else { -1 }
-}
-else { -1 }
-Remove-Item $diskOut -Force -ErrorAction SilentlyContinue
 $diskLow = ($nodeFreeGb -ge 0 -and $nodeFreeGb -lt 15)
 $idle = @()
 if ($mirrorPct -ge 0 -and $mirrorPct -le $NodeIdlePct) { $idle += "mirror(${mirrorPct}%)" }
@@ -52,15 +59,35 @@ $waste = ($box -ge $BoxSaturatedPct -and $idle.Count -gt 0)
 $log = Join-Path $env:LOCALAPPDATA 'kit\schedules\node-utilization-monitor.last.log'
 New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
 $prior = (Get-Content -LiteralPath $log -Tail 1 -ErrorAction SilentlyContinue)
-$wasAlarm = "$prior" -match 'WASTE|DISK-LOW'
+$priorReal = "$prior" -match 'WASTE|DISK-LOW'
+$priorUnknown = "$prior" -match 'UNKNOWN'
+$priorDelivered = "$prior" -match 'DELIVERED'
+$failed = @()
+if ($mirrorPct -lt 0) { $failed += 'mirror' }
+if ($computePct -lt 0) { $failed += 'compute' }
+if ($nodeFreeGb -lt 0) { $failed += 'node-disk' }
 $alarms = @()
 if ($waste) { $alarms += "WASTE: box ${box}% saturated while idle: $($idle -join ', ') - offloadable capacity sitting unused" }
 if ($diskLow) { $alarms += "DISK-LOW: mirror node C: ${nodeFreeGb}GB free (<15GB floor) - mirror scp/retention + node sims at risk" }
-if ($alarms.Count) { $line = "node-utilization-monitor $(Get-Date -Format 'yyyy-MM-dd HH:mm') $($alarms -join ' | ')" }
-else { $line = "node-utilization-monitor $(Get-Date -Format 'yyyy-MM-dd HH:mm') ok: box ${box}%, mirror ${mirrorPct}%, compute ${computePct}%, node-free ${nodeFreeGb}GB" }
-Set-Content -LiteralPath $log -Value $line
+$stamp = Get-Date -Format 'yyyy-MM-dd HH:mm'
+$metrics = "box ${box}%, mirror ${mirrorPct}%, compute ${computePct}%, node-free ${nodeFreeGb}GB [route=$mirrorRoute mirror=${mirrorMs}ms compute=${computeMs}ms]"
+if ($alarms.Count) { $line = "node-utilization-monitor $stamp $($alarms -join ' | ')" }
+elseif ($failed.Count) { $line = "node-utilization-monitor $stamp UNKNOWN: $($failed -join ',') probe(s) failed - cannot measure ($metrics)" }
+else { $line = "node-utilization-monitor $stamp ok: $metrics" }
+# fail-closed: a guard that cannot MEASURE must say so (not 'ok'); 2 consecutive UNKNOWN is itself an alarm (node likely down / disk-blind)
+$twoUnknown = ($failed.Count -gt 0 -and $alarms.Count -eq 0 -and $priorUnknown)
+$noteReal = ($alarms.Count -gt 0 -and -not $priorReal)
+$noteUnknown = ($twoUnknown -and -not $priorDelivered)
+$doNote = ($NoteOnWaste -and ($noteReal -or $noteUnknown))
+$stored = if ($noteUnknown -and $doNote) { "$line [DELIVERED]" } else { $line }
+Set-Content -LiteralPath $log -Value $stored
 $line
-if ($alarms.Count) {
-    if ($NoteOnWaste -and -not $wasAlarm) { & (Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe') story note (Join-Path $PSScriptRoot '..\docs\backlog') REMOTE-OFFLOAD-FIRST "node-utilization ALARM: $line" --as resilience *> $null }
-    exit 1
+if ($doNote) {
+    $kitExe = Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe'
+    $backlog = Join-Path $PSScriptRoot '..\docs\backlog'
+    $noteOut = [IO.Path]::GetTempFileName()
+    $rc = Invoke-Bounded $kitExe @('agile', 'note', $backlog, 'NODE-ALWAYS-FED', "node-utilization ALARM: $line", '--as', 'resilience') 30000 $noteOut
+    if ($rc -ne 0) { Add-Content -LiteralPath $log -Value "node-utilization-monitor $stamp NOTE FAILED rc=$rc (alarm NOT delivered to backlog NODE-ALWAYS-FED)" }
+    Remove-Item $noteOut -Force -ErrorAction SilentlyContinue
 }
+if ($alarms.Count -or $twoUnknown) { exit 1 }

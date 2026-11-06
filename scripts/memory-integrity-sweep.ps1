@@ -61,7 +61,7 @@ $issues | Select-Object -First 30
 $dups
 $citeLine
 if ($issues.Count) {
-    if ($NoteOnDrift) { & (Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe') story note (Join-Path $PSScriptRoot '..\docs\backlog') MEMORY-INTEGRITY-SWEEP "sweep: $line (first: $($issues[0]))" --as resilience *> $null }
+    if ($NoteOnDrift) { & (Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe') agile note (Join-Path $PSScriptRoot '..\docs\backlog') MEMORY-INTEGRITY-SWEEP "sweep: $line (first: $($issues[0]))" --as resilience 2>&1 | Out-Null; if ($LASTEXITCODE -ne 0) { Add-Content -LiteralPath $log -Value "memory-integrity-sweep $(Get-Date -Format 'yyyy-MM-dd HH:mm') NOTE FAILED rc=$LASTEXITCODE (MEMORY-INTEGRITY-SWEEP not delivered)" } }
     exit 1
 }
 exit 0

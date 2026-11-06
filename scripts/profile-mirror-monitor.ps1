@@ -46,7 +46,7 @@ $wasBad = "$prior" -match 'STALE|FAIL|UNREACHABLE'
 function Emit($line, $code) {
     Set-Content -LiteralPath $log -Value $line
     $line
-    if ($code -ne 0 -and $NoteOnStale -and -not $script:wasBad) { & $kit story note (Join-Path $PSScriptRoot '..\docs\backlog') PROFILE-MIRROR-SILENT-FAIL "monitor ALARM (OK->bad transition): $line" --as resilience *> $null }
+    if ($code -ne 0 -and $NoteOnStale -and -not $script:wasBad) { & $kit agile note (Join-Path $PSScriptRoot '..\docs\backlog') PROFILE-MIRROR-SILENT-FAIL "monitor ALARM (OK->bad transition): $line" --as resilience 2>&1 | Out-Null; if ($LASTEXITCODE -ne 0) { Add-Content -LiteralPath $log -Value "profile-mirror-monitor $(Get-Date -Format 'yyyy-MM-dd HH:mm') NOTE FAILED rc=$LASTEXITCODE (PROFILE-MIRROR-SILENT-FAIL not delivered)" } }
     exit $code
 }
 if (-not $reached) { Emit "profile-mirror-monitor $(Get-Date -Format 'yyyy-MM-dd HH:mm') UNREACHABLE (node down all routes)" 3 }

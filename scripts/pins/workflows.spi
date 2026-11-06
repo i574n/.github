@@ -74,6 +74,7 @@
                     "${{ env.SPIRAL_BIN_CACHE_DIR }}/baseline/EXPECTED.tsv"
                     "${{ env.SPIRAL_BIN_CACHE_DIR }}/runs"
                     "${{ env.SPIRAL_BIN_CACHE_DIR }}/samples-output.diff"
+                    "${{ env.SPIRAL_BIN_CACHE_DIR }}/ebpf-kernel-load.txt"
                 ]
             plain "retention-days" "14"
         ]
@@ -88,6 +89,7 @@
             uses "actions/setup-python" [pinned Python]
             run "pwsh scripts/workflow.ps1 -Compiler -Suite ${{ github.event.inputs.suite || 'all' }}"
             guarded_run "always()" ("git diff --no-color -- apps/compiler/tmp/samples " ++# diff_target)
+            guarded_run "always()" "sudo apt-get update -q && sudo apt-get install -y -q linux-tools-common \"linux-tools-$(uname -r)\" && pwsh apps/compiler/scripts/ebpf-kernel-load.ps1 > \"$SPIRAL_BIN_CACHE_DIR/ebpf-kernel-load.txt\" 2>&1 || true"
             uses_if "actions/upload-artifact" "always()" oracle
         ]
     := gate = Some "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
@@ -268,6 +270,24 @@
     := jobs = [xc; build; verified_pages_push_job (pushed ()) "i574n" 30i32]
     := triggers = [Push ["main"]; PullRequest ["main"]; Dispatch]
     { name = "ci"; triggers = triggers; access = [plain "contents" "read"]; jobs = jobs }
+:~ dotnet_pages (tools : list step) (keep_going : bool) (retention : string) : workflow =
+    := artifact = [plain "name" "gh-pages"; plain "path" "dist"; plain "retention-days" retention]
+    := setup = [uses "actions/checkout" []; uses "moonrepo/setup-rust" [pinned RustMain]]
+    := rest =
+        [
+            uses "actions/setup-dotnet" [pinned DotnetWorkflow]
+            run "pwsh scripts/workflow.ps1"
+            uses_if "actions/upload-artifact" "contains(matrix.os, 'ubuntu')" artifact
+        ]
+    := os = Matrix { keep_going = keep_going; os = desktop_os () }
+    := build = job_of "build" 120i32 os (listm.concat [setup; tools; rest])
+    := triggers = [Push ["main"]; PullRequest ["main"]]
+    { name = "gh-pages"; triggers = triggers; access = []; jobs = [build; pages_push_job None] }
+
+:~ html () : workflow = dotnet_pages [beam ()] false "30"
+
+:~ regex () : workflow = dotnet_pages [beam ()] true "90"
+
 := main () : i32 =
     := targets =
         [
@@ -278,7 +298,7 @@
             workflow_target "spiral" "gh-pages.yml" (spiral ())
             workflow_target "fiscal" "gh-pages.yml" (fiscal ())
             workflow_target "tibia" "gh-pages.yml" (tibia ())
-            workflow_target "x" "ci.yml" (x_ci ())
+            workflow_target "x" "gh-pages.yml" (x_ci ())
             { repo = "spiral"; path = "spiral/flake.nix"; rendered = flake () }
             { repo = "spiral"; path = "spiral/.editorconfig"; rendered = editorconfig () }
             { repo = "i574n.github"; path = "i574n.github/.editorconfig"; rendered = editorconfig () }
@@ -296,6 +316,8 @@
             { repo = "x"; path = "x/rust-toolchain.toml"; rendered = rust_toolchain [] }
             workflow_target "kit" "gh-pages.yml" (kit ())
             { repo = "kit"; path = "kit/.editorconfig"; rendered = editorconfig () }
+            workflow_target "html" "gh-pages.yml" (html ())
+            workflow_target "regex" "gh-pages.yml" (regex ())
         ]
     := pending = []
     check_targets "workflows" targets pending

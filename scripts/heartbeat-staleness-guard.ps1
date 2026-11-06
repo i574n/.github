@@ -40,6 +40,6 @@ Set-Content -LiteralPath $log -Value (@($line) + $issues)
 $line
 $issues
 if ($issues.Count) {
-    if ($NoteOnStale -and -not $wasStale) { & (Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe') story note (Join-Path $PSScriptRoot '..\docs\backlog') HEARTBEAT-STALENESS-GUARD "guard ALARM: $line (first: $($issues[0]))" --as resilience *> $null }
+    if ($NoteOnStale -and -not $wasStale) { & (Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe') agile note (Join-Path $PSScriptRoot '..\docs\backlog') HEARTBEAT-STALENESS-GUARD "guard ALARM: $line (first: $($issues[0]))" --as resilience 2>&1 | Out-Null; if ($LASTEXITCODE -ne 0) { Add-Content -LiteralPath $log -Value "heartbeat-staleness-guard $(Get-Date -Format 'yyyy-MM-dd HH:mm') NOTE FAILED rc=$LASTEXITCODE (HEARTBEAT-STALENESS-GUARD not delivered)" } }
     exit 1
 }
