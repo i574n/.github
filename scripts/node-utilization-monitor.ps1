@@ -85,9 +85,19 @@ $line
 if ($doNote) {
     $kitExe = Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe'
     $backlog = Join-Path $PSScriptRoot '..\docs\backlog'
-    $noteOut = [IO.Path]::GetTempFileName()
-    $rc = Invoke-Bounded $kitExe @('agile', 'note', $backlog, 'NODE-ALWAYS-FED', "node-utilization ALARM: $line", '--as', 'resilience') 30000 $noteOut
-    if ($rc -ne 0) { Add-Content -LiteralPath $log -Value "node-utilization-monitor $stamp NOTE FAILED rc=$rc (alarm NOT delivered to backlog NODE-ALWAYS-FED)" }
-    Remove-Item $noteOut -Force -ErrorAction SilentlyContinue
+    $noteText = "node-utilization ALARM: $line"
+    # use the call operator, NOT Start-Process -ArgumentList: the latter splits a text arg containing spaces and ()<> into many operands (kit then sees 20 operands, rc=2 - the silent-drop bug). retry a genuine transient CAS reject; capture the real stderr so a failure says why.
+    $rc = 1; $out = ''
+    foreach ($d in @(0, 2, 5, 10)) {
+        if ($d -gt 0) { Start-Sleep -Seconds $d }
+        $out = (& $kitExe agile note $backlog 'NODE-ALWAYS-FED' $noteText '--as' 'resilience' 2>&1 | Out-String)
+        $rc = $LASTEXITCODE
+        if ($rc -eq 0) { break }
+    }
+    if ($rc -ne 0) {
+        $why = ($out -replace '\s+', ' ').Trim()
+        if ($why.Length -gt 200) { $why = $why.Substring(0, 200) }
+        Add-Content -LiteralPath $log -Value "node-utilization-monitor $stamp NOTE FAILED rc=$rc after 4 tries (alarm NOT delivered to NODE-ALWAYS-FED): $why"
+    }
 }
 if ($alarms.Count -or $twoUnknown) { exit 1 }
