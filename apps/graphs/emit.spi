@@ -1,0 +1,216 @@
+:< sm'_operators
+:< host
+:< graph
+
+:| orientation =
+    | TopToBottom
+    | LeftToRight
+
+:| layout =
+    | Hierarchic : orientation
+    | CompactOrthogonal : i32 * i32
+
+:== setting = { key : string; value : string }
+
+:~ layout_module (l : layout) : string =
+    ?= l ?|
+    | Hierarchic _ => "y.B.J"
+    | CompactOrthogonal _ => "y.B.o"
+
+:~ layout_settings (l : layout) : list setting =
+    ?= l ?|
+    | Hierarchic o =>
+        := direction = ?= o ?| TopToBottom => "TOP_TO_BOTTOM" | LeftToRight => "LEFT_TO_RIGHT"
+        [{ key = "ORIENTATION"; value = direction }; { key = "EDGE_LABELING"; value = "EDGE_LABELING_GENERIC" }; { key = "COMPONENT_ARRANGEMENT_POLICY"; value = "POLICY_COMPACT" }]
+    | CompactOrthogonal (aspect_tenths, grid) =>
+        [{ key = "USE_VIEW_ASPECT_RATIO"; value = "false" }; { key = "ASPECT_RATIO"; value = tenths_text aspect_tenths }; { key = "GRID"; value = show_i32 grid }]
+
+:~ label_html (b : box) : string =
+    := rest = b.lines |> listm::fold (\ acc (l : string) => acc ++# "<br>" ++# xml l) ""
+    "<html><div style='text-align:center'><b>" ++# xml b.title ++# "</b>" ++# rest ++# "</div></html>"
+
+:~ graphml_box (out : text_buffer) (b : box) : () =
+    := s = b.style
+    add out ("<node id=\"" ++# xml b.id ++# "\"><data key=\"d0\"><y:ShapeNode><y:Geometry height=\"" ++# show_i32 b.height ++# "\" width=\"" ++# show_i32 b.width ++# "\" x=\"0\" y=\"0\"/>")
+    add out ("<y:Fill color=\"" ++# s.fill ++# "\" transparent=\"false\"/><y:BorderStyle color=\"" ++# s.border ++# "\" type=\"" ++# stroke_name s.stroke ++# "\" width=\"" ++# tenths_text s.tenths ++# "\"/>")
+    add out ("<y:NodeLabel fontSize=\"" ++# show_i32 b.font ++# "\" textColor=\"" ++# s.ink ++# "\" modelName=\"internal\" modelPosition=\"c\">" ++# xml (label_html b) ++# "</y:NodeLabel>")
+    add out ("<y:Shape type=\"" ++# shape_name s.shape ++# "\"/></y:ShapeNode></data></node>\n")
+
+:~ graphml_frame_head (out : text_buffer) (f : frame) : () =
+    := border = ? f.dashed ?> "dashed" |: "line"
+    := width = ? f.dashed ?> "1.5" |: "3.0"
+    := see_through = ? f.dashed ?> "true" |: "false"
+    add out ("<node id=\"" ++# xml f.id ++# "\" yfiles.foldertype=\"group\"><data key=\"d0\"><y:ProxyAutoBoundsNode><y:Realizers active=\"0\"><y:GroupNode>")
+    add out ("<y:Geometry height=\"100\" width=\"200\" x=\"0\" y=\"0\"/><y:Fill color=\"" ++# f.fill ++# "\" transparent=\"" ++# see_through ++# "\"/>")
+    add out ("<y:BorderStyle color=\"" ++# f.header ++# "\" type=\"" ++# border ++# "\" width=\"" ++# width ++# "\"/>")
+    add out ("<y:NodeLabel alignment=\"left\" autoSizePolicy=\"node_width\" backgroundColor=\"" ++# f.header ++# "\" textColor=\"#FFFFFF\" fontSize=\"" ++# show_i32 f.font ++# "\" fontStyle=\"bold\" modelName=\"internal\" modelPosition=\"t\">" ++# xml ("      " ++# f.label) ++# "</y:NodeLabel>")
+    add out ("<y:Shape type=\"roundrectangle\"/><y:State closed=\"false\"/><y:Insets bottom=\"20\" left=\"20\" right=\"20\" top=\"20\"/></y:GroupNode></y:Realizers></y:ProxyAutoBoundsNode></data><graph edgedefault=\"directed\" id=\"" ++# xml f.id ++# ":\">\n")
+
+:~ ^ graphml_members (out : text_buffer) (ms : list member) : () =
+    ?= ms ?|
+    | m :: rest =>
+        graphml_member out m
+        graphml_members out rest
+    | [] => ()
+:& :~ graphml_member (out : text_buffer) (m : member) : () =
+    ?= m ?|
+    | Leaf b => graphml_box out b
+    | Nest (f, inner) =>
+        graphml_frame_head out f
+        graphml_members out inner
+        add out "</graph></node>\n"
+
+:~ graphml_link (out : text_buffer) (i : i32) (l : link) : () =
+    := s = l.style
+    add out ("<edge id=\"e" ++# show_i32 i ++# "\" source=\"" ++# xml l.source ++# "\" target=\"" ++# xml l.target ++# "\"><data key=\"d2\"><y:PolyLineEdge>")
+    add out ("<y:LineStyle color=\"" ++# s.color ++# "\" type=\"" ++# stroke_name s.stroke ++# "\" width=\"" ++# tenths_text s.tenths ++# "\"/><y:Arrows source=\"none\" target=\"" ++# head_name s.head ++# "\"/>")
+    ? l.label =. "" ?> () |: add out ("<y:EdgeLabel fontSize=\"11\" textColor=\"" ++# s.color ++# "\" backgroundColor=\"#FFFFFF\" modelName=\"side_slider\" preferredPlacement=\"anywhere\">" ++# xml l.label ++# "</y:EdgeLabel>")
+    add out "</y:PolyLineEdge></data></edge>\n"
+
+:~ graphml_text (d : diagram) : string =
+    := out = buffer ()
+    add out "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n<graphml xmlns=\"http://graphml.graphdrawing.org/xmlns\" xmlns:y=\"http://www.yworks.com/xml/graphml\">\n"
+    add out "<key for=\"node\" id=\"d0\" yfiles.type=\"nodegraphics\"/>\n<key for=\"edge\" id=\"d2\" yfiles.type=\"edgegraphics\"/>\n<graph edgedefault=\"directed\" id=\"G\">\n"
+    graphml_members out d.members
+    d.links |> listm::fold (\ i (l : link) =>
+        graphml_link out i l
+        i + 1i32) 0i32 |> ignore
+    add out "</graph>\n</graphml>\n"
+    text_of out
+
+:~ mermaid_text (s : string) : string =
+    s
+    |> sm'::replace "#" "#35;"
+    |> sm'::replace "&" "#amp;"
+    |> sm'::replace "\"" "#quot;"
+    |> sm'::replace "<" "#lt;"
+    |> sm'::replace ">" "#gt;"
+    |> sm'::replace "|" "#124;"
+
+:~ mermaid_id (id : string) : string = "n_" ++# (id |> sm'::replace "-" "_" |> sm'::replace "." "_" |> sm'::replace ":" "_")
+
+:~ mermaid_brackets (s : shape) : string * string =
+    ?= s ?|
+    | Rectangle => "[\"", "\"]"
+    | RoundRectangle => "(\"", "\")"
+    | Hexagon => "{{\"", "\"}}"
+    | Octagon => "{{\"", "\"}}"
+    | Parallelogram => "[/\"", "\"/]"
+    | Ellipse => "((\"", "\"))"
+
+:~ mermaid_class (s : node_style) : string = "c_" ++# sm'::replace "#" "" s.fill ++# "_" ++# sm'::replace "#" "" s.border
+
+:~ ^ mermaid_members (out : text_buffer) (indent : string) (ms : list member) : () =
+    ?= ms ?|
+    | m :: rest =>
+        mermaid_member out indent m
+        mermaid_members out indent rest
+    | [] => ()
+:& :~ mermaid_member (out : text_buffer) (indent : string) (m : member) : () =
+    ?= m ?|
+    | Leaf b =>
+        := rest = b.lines |> listm::fold (\ acc (l : string) => acc ++# "<br/>" ++# mermaid_text l) ""
+        ?= mermaid_brackets b.style.shape ?|
+        | (opening, closing) => add out (indent ++# mermaid_id b.id ++# opening ++# "<b>" ++# mermaid_text b.title ++# "</b>" ++# rest ++# closing ++# ":::" ++# mermaid_class b.style ++# "\n")
+    | Nest (f, inner) =>
+        add out (indent ++# "subgraph g_" ++# (mermaid_id f.id) ++# "[\"" ++# mermaid_text f.label ++# "\"]\n")
+        mermaid_members out (indent ++# "  ") inner
+        add out (indent ++# "end\n")
+
+:~ ^ styles_of (ms : list member) (acc : list node_style) : list node_style =
+    ?= ms ?|
+    | Leaf b :: rest =>
+        := known = acc |> any_of (\ (s : node_style) => mermaid_class s =. mermaid_class b.style)
+        styles_of rest (? known ?> acc |: b.style :: acc)
+    | Nest (_, inner) :: rest => styles_of rest (styles_of inner acc)
+    | [] => acc
+
+:~ arrow_of (s : edge_style) : string =
+    ?= s.stroke ?|
+    | Solid => ? s.tenths >= 25i32 ?> "==>" |: "-->"
+    | Dashed => "-.->"
+    | Dotted => "-.->"
+    | DashDotted => "-.->"
+
+:~ mermaid_diagram (d : diagram) : string =
+    := out = buffer ()
+    add out "flowchart LR\n"
+    mermaid_members out "  " d.members
+    d.links |> listm::iter (\ (l : link) =>
+        := label = ? l.label =. "" ?> "" |: "|\"" ++# mermaid_text l.label ++# "\"|"
+        add out ("  " ++# mermaid_id l.source ++# " " ++# arrow_of l.style ++# label ++# " " ++# mermaid_id l.target ++# "\n"))
+    d.links |> listm::fold (\ i (l : link) =>
+        add out ("  linkStyle " ++# show_i32 i ++# " stroke:" ++# l.style.color ++# ",stroke-width:" ++# tenths_text l.style.tenths ++# "px\n")
+        i + 1i32) 0i32 |> ignore
+    styles_of d.members [] |> listm::rev |> listm::iter (\ (s : node_style) =>
+        add out ("  classDef " ++# mermaid_class s ++# " fill:" ++# s.fill ++# ",stroke:" ++# s.border ++# ",color:" ++# s.ink ++# "\n"))
+    text_of out
+
+:~ ^ draw_legend (c : canvas) (x : i32) (entries : list legend_entry) : () =
+    ?= entries ?|
+    | Swatch (label, s) :: rest =>
+        canvas_shape c (shape_name s.shape) x 130i32 187i32 34i32 s.fill s.border s.tenths (stroke_name s.stroke)
+        canvas_centered c label x 130i32 187i32 34i32 18i32
+        draw_legend c (x + 201i32) rest
+    | Stroke (label, s) :: rest =>
+        canvas_line c x 147i32 (x + 70i32) 147i32 s.color s.tenths (stroke_name s.stroke)
+        := w = canvas_text c label (x + 77i32) 153i32 18i32 !- "#222222"
+        draw_legend c (x + 98i32 + w) rest
+    | [] => ()
+
+:~ compose_png (d : diagram) (raw : string) (path : string) : () =
+    := c = canvas_open raw 230i32
+    canvas_rect c 0i32 0i32 (-1i32) 70i32 "#222222"
+    canvas_text c d.title 30i32 50i32 40i32 !+ "#FFFFFF" |> ignore
+    canvas_text c d.subtitle 30i32 105i32 24i32 !- "#333333" |> ignore
+    draw_legend c 30i32 d.legend
+    canvas_rect c 0i32 227i32 (-1i32) 3i32 "#BBBBBB"
+    canvas_save c path
+
+:! on_graphml = ()
+:! on_mermaid = ()
+:! on_svg = ()
+:! on_png = ()
+
+:? extension_of p : p -> string
+:+ extension_of on_graphml = \ _ => ".graphml"
+:+ extension_of on_mermaid = \ _ => ".mmd"
+:+ extension_of on_svg = \ _ => ".svg"
+:+ extension_of on_png = \ _ => ".png"
+
+:! modeled = ()
+:! laid_out = ()
+
+:| stage s =
+    | Modeled :: diagram -> stage modeled
+    | LaidOut :: diagram * yed_graph -> stage laid_out
+
+:? written_as p : p -> stage laid_out -> string -> ()
+:+ written_as on_graphml = \ _ s path => ?= s ?| LaidOut (_, g) => write_graphml g path
+:+ written_as on_mermaid = \ _ s path => ?= s ?| LaidOut (d, _) => write_text path (mermaid_diagram d)
+:+ written_as on_svg = \ _ s path => ?= s ?| LaidOut (_, g) => write_svg g path
+:+ written_as on_png = \ _ s path =>
+    ?= s ?|
+    | LaidOut (d, g) =>
+        := raw = path ++# ".raw.png"
+        write_png g raw 100i32
+        compose_png d raw path
+        delete_file raw
+
+:= publish_as \* p {extension_of; written_as}. (p : p) (s : stage laid_out) (stem : string) : () = written_as p s (stem ++# extension_of p)
+
+:~ lay_out (l : layout) (s : stage modeled) : stage laid_out =
+    ?= s ?|
+    | Modeled d =>
+        := g = yed_open (graphml_text d)
+        := m = yed_module (layout_module l)
+        layout_settings l |> listm::iter (\ (x : setting) => yed_set m x.key x.value)
+        := status = yed_run m g
+        ? status =. 0i32 ?> () |: say ("layout status " ++# show_i32 status)
+        LaidOut (d, g)
+
+:~ publish (s : stage laid_out) (stem : string) : () =
+    publish_as on_graphml s stem
+    publish_as on_svg s stem
+    publish_as on_png s stem
+    publish_as on_mermaid s stem

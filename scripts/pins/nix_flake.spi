@@ -1,0 +1,56 @@
+:< sm'_operators
+:< pins
+
+:~ before_dot (s : string) : string =
+    := at = sm'.index_of "." s
+    ? at <= 0 ?> s |: sm.slice s { from = 0i32; to = (conv at : i32) - 1i32 }
+
+:~ after_dot (s : string) : string =
+    := at = sm'.index_of "." s
+    ? at <= 0 ?> "" |: sm.slice s { from = (conv at : i32) + 1i32; to = (sm.length s : i32) - 1i32 }
+
+:~ flake () : string =
+    := rust_date = sm'.replace "nightly-" "" (version_of RustMain)
+    := elixir = sm'.replace "." "_" (version_of Elixir)
+    := python = before_dot (version_of Python) ++# before_dot (after_dot (version_of Python))
+    := dotnet = before_dot (version_of DotnetWorkflow)
+    := lines =
+        [
+            "{"
+            "  inputs = {"
+            "    nixpkgs.url = \"github:NixOS/nixpkgs/nixos-unstable\";"
+            "    rust-overlay.url = \"github:oxalica/rust-overlay\";"
+            "    rust-overlay.inputs.nixpkgs.follows = \"nixpkgs\";"
+            "    zig-overlay.url = \"github:mitchellh/zig-overlay\";"
+            "    zig-overlay.inputs.nixpkgs.follows = \"nixpkgs\";"
+            "  };"
+            ""
+            "  outputs = { nixpkgs, rust-overlay, zig-overlay, ... }:"
+            "    let"
+            "      system = \"x86_64-linux\";"
+            "      pkgs = import nixpkgs { inherit system; overlays = [ rust-overlay.overlays.default ]; };"
+            "      beam = pkgs.beam.packages.erlang_" ++# version_of Otp ++# ";"
+            "      rust = pkgs.rust-bin.nightly.\"" ++# rust_date ++# "\".default.override {"
+            "        extensions = [ \"clippy\" \"rust-src\" \"rustfmt\" ];"
+            "        targets = [ \"wasm32-unknown-unknown\" ];"
+            "      };"
+            "      zig = zig-overlay.packages.${system}.\"" ++# version_of pins.Zig ++# "\";"
+            "    in {"
+            "      devShells.${system}.default = pkgs.mkShell {"
+            "        packages = ["
+            "          pkgs.dotnet-sdk_" ++# dotnet
+            "          pkgs.python" ++# python
+            "          beam.erlang"
+            "          beam.elixir_" ++# elixir
+            "          beam.rebar3"
+            "          pkgs.gleam"
+            "          pkgs.bun"
+            "          pkgs.powershell"
+            "          rust"
+            "          zig"
+            "        ];"
+            "      };"
+            "    };"
+            "}"
+        ]
+    listm.fold (\ text line => text ++# line ++# "\n") "" lines

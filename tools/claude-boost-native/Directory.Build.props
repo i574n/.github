@@ -1,0 +1,9 @@
+<Project>
+  <!-- Keep ALL build artifacts OUT of the repo (user rule: tools must not write output files into repos).
+       bin/ and obj/ go under %LOCALAPPDATA% instead of the project dir. The deployable is published separately
+       to %LOCALAPPDATA%\claude-boost-native\ by `dotnet publish -o`. -->
+  <PropertyGroup>
+    <BaseOutputPath>$(LOCALAPPDATA)\claude-boost-native-build\bin\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(LOCALAPPDATA)\claude-boost-native-build\obj\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

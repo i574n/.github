@@ -1,0 +1,323 @@
+:< sm'_operators
+:< pins
+:< workflow
+:< org_jobs
+:< workflow_check
+:< nix_flake
+:< editorconfig
+:< rust_toolchain
+
+:~ blog () : workflow =
+    := ubuntu = on_ubuntu ()
+    := steps =
+        [
+            uses "actions/checkout" []
+            uses "moonrepo/setup-rust" [pinned RustMain]
+            beam ()
+            uses "mlugg/setup-zig" [pinned pins.Zig]
+            run "pwsh scripts/workflow.ps1"
+            run_if "pwsh scripts/publish.ps1" ubuntu
+            uses_if "actions/upload-artifact" ubuntu (pages_artifact ())
+        ]
+    := os = Matrix { keep_going = true; os = desktop_os () }
+    := build = job_of "build" 120i32 os steps
+    := push = pages_push_job (pushed ())
+    := triggers = [Push ["main"]; PullRequest ["main"]; Dispatch]
+    { name = "gh-pages"; triggers = triggers; access = [plain "contents" "read"]; jobs = [build; push] }
+
+:~ dice () : workflow =
+    := triggers = [Push ["main"]; PullRequest ["main"]]
+    := jobs = [notebook_build [] [] (pages_upload ()); verified_pages_push_job None "i574n" 180i32]
+    { name = "gh-pages"; triggers = triggers; access = []; jobs = jobs }
+
+:~ tectonic_diagnostics () : list string =
+    [
+        "printf '# t\\n\\nhello\\n' > /tmp/tt.md"
+        "tectonic --version || true"
+        "command -v crowbook && crowbook --verbose --to pdf --single /tmp/tt.md --output /tmp/tt.pdf "
+            ++# "--set tex.command tectonic || true"
+        "fc-list | grep -i -E 'nanum' | head -n 10 || true"
+    ]
+
+:~ alphabet () : workflow =
+    := apt = [plain "packages" "pandoc fonts-nanum-coding"; plain "version" "1.0"]
+    := before =
+        [
+            uses "actions/setup-go" []
+            uses_if "awalsh128/cache-apt-pkgs-action" "contains(matrix.os, 'ubuntu')" apt
+            uses "wtfjoke/setup-tectonic" [plain "github-token" "${{ secrets.GITHUB_TOKEN }}"]
+        ]
+    := after = [named_script "tectonic diagnostics" (Some "failure()") "bash" (tectonic_diagnostics ())]
+    := triggers = [Push ["main"]; PullRequest ["main"]]
+    := jobs = [notebook_build before after (pages_upload ()); verified_pages_push_job None "i574n" 180i32]
+    { name = "gh-pages"; triggers = triggers; access = []; jobs = jobs }
+
+
+:~ i574n_github () : workflow =
+    := ubuntu = on_ubuntu ()
+    := tectonic = uses "wtfjoke/setup-tectonic" [plain "github-token" "${{ secrets.GITHUB_TOKEN }}"]
+    := before = [tectonic; soft_run_if "pwsh apps/graphs/build.ps1" "${{ contains(matrix.os, 'ubuntu') }}"]
+    := upload = uses_if "actions/upload-artifact" ubuntu (pages_artifact ())
+    := deploy = uses "peaceiris/actions-gh-pages" (pages_deploy ())
+    := gate = Some "${{ !cancelled() && github.event_name == 'push' }}"
+    := push = push_job gate 180i32 [uses "actions/checkout" []; pages_download (); deploy]
+    := triggers = [Push ["main"]; PullRequest ["main"]]
+    := jobs = [notebook_build before [] upload; push]
+    { name = "gh-pages"; triggers = triggers; access = []; jobs = jobs }
+
+:~ spiral_compiler_job () : job =
+    := oracle =
+        [
+            plain "name" "compiler-oracle"
+            lines "path"
+                [
+                    "${{ env.SPIRAL_BIN_CACHE_DIR }}/baseline/EXPECTED.tsv"
+                    "${{ env.SPIRAL_BIN_CACHE_DIR }}/runs"
+                    "${{ env.SPIRAL_BIN_CACHE_DIR }}/samples-output.diff"
+                    "${{ env.SPIRAL_BIN_CACHE_DIR }}/ebpf-kernel-load.txt"
+                ]
+            plain "retention-days" "14"
+        ]
+    := diff_target = "> \"$SPIRAL_BIN_CACHE_DIR/samples-output.diff\""
+    := steps =
+        [
+            run "echo \"SPIRAL_BIN_CACHE_DIR=$RUNNER_TEMP/spiral-bin\" >> \"$GITHUB_ENV\""
+            uses "actions/checkout" []
+            beam ()
+            uses "oven-sh/setup-bun" []
+            uses "mlugg/setup-zig" [pinned pins.Zig]
+            uses "actions/setup-python" [pinned Python]
+            run "pwsh scripts/workflow.ps1 -Compiler -Suite ${{ github.event.inputs.suite || 'all' }}"
+            guarded_run "always()" ("git diff --no-color -- apps/compiler/tmp/samples " ++# diff_target)
+            guarded_run "always()" "sudo apt-get update -q && sudo apt-get install -y -q linux-tools-common \"linux-tools-$(uname -r)\" && pwsh apps/compiler/scripts/ebpf-kernel-load.ps1 > \"$SPIRAL_BIN_CACHE_DIR/ebpf-kernel-load.txt\" 2>&1 || true"
+            uses_if "actions/upload-artifact" "always()" oracle
+        ]
+    := gate = Some "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
+    := os = Runs "ubuntu-24.04"
+    := base = job_of "compiler" 360i32 os steps
+    { base ?| condition = gate }
+
+:~ transformer_model_cache () : step =
+    := script =
+        [
+            "models=\"$HOME/.cache/spiral-bin/models/llama2c\""
+            "mkdir -p \"$models\""
+            "base=https://huggingface.co/karpathy/tinyllamas/resolve/main/stories260K"
+            "curl -fsSL --retry 3 -o \"$models/stories260K.bin\" \"$base/stories260K.bin\""
+            "curl -fsSL --retry 3 -o \"$models/tok512.bin\" \"$base/tok512.bin\""
+            "printf '%s  %s\\n' \\"
+            "  b0a507e7ad0f626624f17112325e66691f9076d622e1d3274d103d00299f2696 \"$models/stories260K.bin\" \\"
+            "  037cb335abb25d1fa9e8ecae30ed2a3a8ace9302862ebcdc05d51a6bbb10c312 \"$models/tok512.bin\" | sha256sum -c"
+        ]
+    := r = plain_run script
+    Run { r ?| name = Some "transformer model cache (pins in apps/transformer/oracle.spi)" }
+
+:~ spiral_cells_gate_job () : job =
+    := report = [plain "name" "cells-gate"; plain "path" "${{ runner.temp }}/cells-gate"]
+    := steps =
+        [
+            uses "actions/checkout" []
+            uses "moonrepo/setup-rust" [pinned RustMain; quoted "components" "rust-src"]
+            beam ()
+            uses "actions/setup-dotnet" [pinned DotnetWorkflow]
+            uses "mlugg/setup-zig" [pinned pins.Zig]
+            run "pwsh scripts/workflow.ps1 -Compiler"
+            transformer_model_cache ()
+            run "pwsh apps/cells/spi/ci_gate.ps1 -Out \"${{ runner.temp }}/cells-gate\" -Roots lib/spiral,apps/transformer"
+            uses_if "actions/upload-artifact" "always()" report
+        ]
+    := gate = Some "github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'"
+    := os = Runs "ubuntu-24.04"
+    := base = job_of "cells-gate" 240i32 os steps
+    { base ?| condition = gate }
+
+:~ spiral () : workflow =
+    := notebooks = notebook_build [] [] (pages_upload ())
+    := build = { notebooks ?| condition = Some "github.event_name != 'schedule'" }
+    := suite = { name = "suite"; description = "compiler test.ps1 -Suite value"; required = false; default = "all" }
+    := triggers = [Push ["main"]; PullRequest ["main"]; Schedule ["17 6 * * *"]; DispatchInputs [suite]]
+    := jobs = [build; spiral_compiler_job (); spiral_cells_gate_job (); verified_pages_push_job None "i574n" 180i32]
+    { name = "gh-pages"; triggers = triggers; access = []; jobs = jobs }
+:~ notebook_uploads () : list step =
+    := notebooks =
+        [
+            plain "name" "notebooks-${{ matrix.os }}"
+            plain "path" "notebooks"
+            plain "retention-days" "14"
+        ]
+    := metrics =
+        [
+            plain "name" "ci-metrics-${{ matrix.os }}"
+            plain "path" "target/ci-metrics"
+            plain "retention-days" "30"
+        ]
+    [
+        uses_if "actions/upload-artifact" "failure()" notebooks
+        uses_if "actions/upload-artifact" "always()" metrics
+        uses_if "actions/upload-artifact" (on_ubuntu ()) (pages_artifact ())
+    ]
+
+:~ tibia () : workflow =
+    := rust =
+        [
+            pinned RustMain
+            quoted "components" "clippy,rust-src,rustfmt"
+            quoted "targets" "wasm32-unknown-unknown"
+            plain "cache" "false"
+        ]
+    := tool_bins =
+        [
+            "~/.cargo/bin/trunk*"
+            "~/.cargo/bin/cargo-outdated*"
+            "~/.cargo/bin/cargo-binstall*"
+            "~/.cargo/bin/sccache*"
+            "~/.cargo/bin/.patched-crates"
+        ]
+    := tools = [lines "path" tool_bins; plain "key" "cargo-tools-${{ runner.os }}-trunk-0.21.14-outdated-0.19.0"]
+    := wgsl =
+        [
+            plain "path" "target/wgsl-run"
+            plain "key" "wgsl-run-${{ runner.os }}-${{ github.run_id }}"
+            plain "restore-keys" "wgsl-run-${{ runner.os }}-"
+        ]
+    := gpu = Some "${{ !cancelled() && steps.init.outcome == 'success' }}"
+    := sim_if = Some "${{ !cancelled() && steps.init.outcome == 'success' && contains(matrix.os, 'ubuntu') }}"
+    := sim =
+        [
+            "pwsh scripts/predict.ps1 -Module sweep -Label ci-c -Backend c -Out \"${{ runner.temp }}/sweep-c.tsv\""
+            "pwsh scripts/predict.ps1 -Module sweep -Label ci-rust -Backend rust -Out \"${{ runner.temp }}/sweep-rust.tsv\""
+        ]
+    := sim_rate = plain_run sim
+    := setup =
+        [
+            uses "actions/checkout" []
+            uses "moonrepo/setup-rust" rust
+            uses "actions/cache" tools
+            uses "actions/cache" wgsl
+            beam ()
+            uses "actions/setup-dotnet" [pinned DotnetWorkflow]
+            uses "oven-sh/setup-bun" []
+            uses "mlugg/setup-zig" [pinned pins.Zig]
+            uses "actions/setup-python" [pinned Python]
+            run_id "init" None "pwsh scripts/init.ps1"
+            run_id "short" None "pwsh scripts/build.ps1 -Exclude gpu_sim,hunt_sim -Label short"
+            run_id "long-gpu" gpu "pwsh scripts/build.ps1 -Files gpu_sim,hunt_sim -Label long-gpu"
+            Run { sim_rate ?| id = Some "sim-rate"; condition = sim_if }
+            run_if "pwsh scripts/publish.ps1" (on_ubuntu ())
+        ]
+    := steps = listm.append setup (notebook_uploads ())
+    := build = job_of "build" 420i32 (Matrix { keep_going = true; os = desktop_os () }) steps
+    := jobs = [build; verified_pages_push_job (pushed ()) "i574n" 180i32]
+    { name = "gh-pages"; triggers = [Push ["main"]; PullRequest ["main"]]; access = []; jobs = jobs }
+
+:~ fiscal () : workflow =
+    := rust = [pinned RustMain; quoted "components" "rust-src"; plain "cache" "false"]
+    := setup =
+        [
+            uses "actions/checkout" []
+            uses "moonrepo/setup-rust" rust
+            beam ()
+            uses "actions/setup-dotnet" [pinned DotnetWorkflow]
+            run_id "init" None "pwsh scripts/init.ps1"
+            run_id "build" None "pwsh scripts/build.ps1"
+            run_if "pwsh scripts/publish.ps1" (on_ubuntu ())
+        ]
+    := steps = listm.append setup (notebook_uploads ())
+    := build = job_of "build" 420i32 (Matrix { keep_going = true; os = desktop_os () }) steps
+    := metrics = artifacts_download "ci-metrics-*" "gh-pages/target"
+    := jobs = [build; verified_pages_push_job_with [metrics] (pushed ()) "i574n" 180i32]
+    { name = "gh-pages"; triggers = [Push ["main"]; PullRequest ["main"]]; access = []; jobs = jobs }
+
+:~ kit () : workflow =
+    := steps =
+        [
+            uses "actions/checkout" []
+            uses "moonrepo/setup-rust" [pinned RustMain; quoted "components" "rustfmt"]
+            beam ()
+            uses "mlugg/setup-zig" [pinned pins.Zig]
+            run "pwsh scripts/workflow.ps1"
+            run_if "pwsh scripts/publish.ps1" (on_ubuntu ())
+            uses_if "actions/upload-artifact" (on_ubuntu ()) (pages_artifact ())
+        ]
+    := base = job_of "build" 90i32 (Matrix { keep_going = true; os = desktop_os () }) steps
+    := build = { base ?| env = [quoted "CARGO_BUILD_JOBS" "2"; quoted "CARGO_PROFILE_DEV_DEBUG" "0"; quoted "RUST_TEST_THREADS" "1"] }
+    := push = verified_pages_push_job (pushed ()) "${{ github.repository_owner }}" 30i32
+    := triggers = [Push ["main"]; PullRequest ["main"]; Dispatch]
+    { name = "gh-pages"; triggers = triggers; access = [plain "contents" "read"]; jobs = [build; push] }
+
+:~ x_ci () : workflow =
+    := binary = [plain "name" "xc-windows"; plain "path" "target/release/xc.exe"; plain "if-no-files-found" "error"]
+    := xc_steps =
+        [
+            uses "actions/checkout" []
+            uses "moonrepo/setup-rust" [pinned RustMain]
+            run "pwsh scripts/workflow.ps1 -Xc"
+            uses "actions/upload-artifact" binary
+        ]
+    := steps =
+        [
+            uses "actions/checkout" []
+            uses "moonrepo/setup-rust" [pinned RustMain]
+            beam ()
+            uses "mlugg/setup-zig" [pinned pins.Zig]
+            uses "actions/setup-python" [pinned Python]
+            run "pwsh scripts/workflow.ps1"
+            run_if "pwsh scripts/publish.ps1" (on_ubuntu ())
+            uses_if "actions/upload-artifact" (on_ubuntu ()) (pages_artifact ())
+        ]
+    := xc = job_of "xc-windows" 30i32 (Runs "windows-2025") xc_steps
+    := build = job_of "build" 120i32 (Matrix { keep_going = true; os = desktop_os () }) steps
+    := jobs = [xc; build; verified_pages_push_job (pushed ()) "i574n" 30i32]
+    := triggers = [Push ["main"]; PullRequest ["main"]; Dispatch]
+    { name = "ci"; triggers = triggers; access = [plain "contents" "read"]; jobs = jobs }
+:~ dotnet_pages (tools : list step) (keep_going : bool) (retention : string) : workflow =
+    := artifact = [plain "name" "gh-pages"; plain "path" "dist"; plain "retention-days" retention]
+    := setup = [uses "actions/checkout" []; uses "moonrepo/setup-rust" [pinned RustMain]]
+    := rest =
+        [
+            uses "actions/setup-dotnet" [pinned DotnetWorkflow]
+            run "pwsh scripts/workflow.ps1"
+            uses_if "actions/upload-artifact" "contains(matrix.os, 'ubuntu')" artifact
+        ]
+    := os = Matrix { keep_going = keep_going; os = desktop_os () }
+    := build = job_of "build" 120i32 os (listm.concat [setup; tools; rest])
+    := triggers = [Push ["main"]; PullRequest ["main"]]
+    { name = "gh-pages"; triggers = triggers; access = []; jobs = [build; pages_push_job None] }
+
+:~ html () : workflow = dotnet_pages [beam ()] false "30"
+
+:~ regex () : workflow = dotnet_pages [beam ()] true "90"
+
+:= main () : i32 =
+    := targets =
+        [
+            workflow_target "blog" "gh-pages.yml" (blog ())
+            workflow_target "dice" "gh-pages.yml" (dice ())
+            workflow_target "alphabet" "gh-pages.yml" (alphabet ())
+            workflow_target "i574n.github" "gh-pages.yml" (i574n_github ())
+            workflow_target "spiral" "gh-pages.yml" (spiral ())
+            workflow_target "fiscal" "gh-pages.yml" (fiscal ())
+            workflow_target "tibia" "gh-pages.yml" (tibia ())
+            workflow_target "x" "gh-pages.yml" (x_ci ())
+            { repo = "spiral"; path = "spiral/flake.nix"; rendered = flake () }
+            { repo = "spiral"; path = "spiral/.editorconfig"; rendered = editorconfig () }
+            { repo = "i574n.github"; path = "i574n.github/.editorconfig"; rendered = editorconfig () }
+            { repo = "dice"; path = "dice/.editorconfig"; rendered = editorconfig () }
+            { repo = "alphabet"; path = "alphabet/.editorconfig"; rendered = editorconfig () }
+            { repo = "tibia"; path = "tibia/.editorconfig"; rendered = editorconfig () }
+            { repo = "x"; path = "x/.editorconfig"; rendered = editorconfig () }
+            { repo = "fiscal"; path = "fiscal/.editorconfig"; rendered = editorconfig () }
+            { repo = "blog"; path = "blog/.editorconfig"; rendered = editorconfig () }
+            { repo = "alphabet"; path = "alphabet/rust-toolchain.toml"; rendered = rust_toolchain [] }
+            { repo = "blog"; path = "blog/rust-toolchain.toml"; rendered = rust_toolchain [] }
+            { repo = "dice"; path = "dice/rust-toolchain.toml"; rendered = rust_toolchain [] }
+            { repo = "spiral"; path = "spiral/rust-toolchain.toml"; rendered = rust_toolchain [] }
+            { repo = "tibia"; path = "tibia/rust-toolchain.toml"; rendered = tibia_rust_toolchain () }
+            { repo = "x"; path = "x/rust-toolchain.toml"; rendered = rust_toolchain [] }
+            workflow_target "kit" "gh-pages.yml" (kit ())
+            { repo = "kit"; path = "kit/.editorconfig"; rendered = editorconfig () }
+            workflow_target "html" "gh-pages.yml" (html ())
+            workflow_target "regex" "gh-pages.yml" (regex ())
+        ]
+    := pending = []
+    check_targets "workflows" targets pending

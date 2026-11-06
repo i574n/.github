@@ -1,0 +1,184 @@
+:< sm'_operators
+:< host
+
+:| node_kind =
+    | Entry
+    | Fn
+    | Data
+    | Type
+    | Api
+    | Op
+    | Seam
+    | Note
+    | Cfg
+    | Err
+    | Be
+    | Ext
+    | Class
+    | Impl
+
+:| edge_kind =
+    | Flow
+    | Call
+    | DataFlow
+    | SeamLink
+    | ToSingleFlight
+    | ToHopacsota
+    | Engine
+    | Reuse
+    | NoteLink
+
+:| parent r =
+    | TopLevel
+    | Under : r
+
+:== region_info r = { key : string; parent : parent r; title : string; subtitle : string }
+
+:== part_info r = { key : string; region : r; kind : node_kind; title : string; detail : string }
+
+:== relation p = { source : p; target : p; kind : edge_kind; label : string }
+
+:| shape =
+    | Rectangle
+    | RoundRectangle
+    | Hexagon
+    | Octagon
+    | Parallelogram
+    | Ellipse
+
+:| stroke =
+    | Solid
+    | Dashed
+    | Dotted
+    | DashDotted
+
+:| arrow_head =
+    | Standard
+    | WhiteDelta
+    | WhiteDiamond
+    | Bare
+
+:== node_style = { shape : shape; fill : string; border : string; stroke : stroke; tenths : i32; ink : string }
+
+:== edge_style = { color : string; stroke : stroke; tenths : i32; head : arrow_head }
+
+:== box = { id : string; title : string; lines : list string; style : node_style; width : i32; height : i32; font : i32; bold : bool }
+
+:== link = { source : string; target : string; label : string; style : edge_style }
+
+:== frame = { id : string; label : string; fill : string; header : string; dashed : bool; font : i32 }
+
+:| ^ member =
+    | Leaf : box
+    | Nest : frame * list member
+
+:| legend_entry =
+    | Swatch : string * node_style
+    | Stroke : string * edge_style
+
+:== diagram = { title : string; subtitle : string; legend : list legend_entry; members : list member; links : list link }
+
+:~ shape_name (s : shape) : string =
+    ?= s ?|
+    | Rectangle => "rectangle"
+    | RoundRectangle => "roundrectangle"
+    | Hexagon => "hexagon"
+    | Octagon => "octagon"
+    | Parallelogram => "parallelogram"
+    | Ellipse => "ellipse"
+
+:~ stroke_name (s : stroke) : string =
+    ?= s ?|
+    | Solid => "line"
+    | Dashed => "dashed"
+    | Dotted => "dotted"
+    | DashDotted => "dashed_dotted"
+
+:~ head_name (h : arrow_head) : string =
+    ?= h ?|
+    | Standard => "standard"
+    | WhiteDelta => "white_delta"
+    | WhiteDiamond => "white_diamond"
+    | Bare => "none"
+
+:~ kind_style (k : node_kind) : node_style =
+    ?= k ?|
+    | Entry => { shape = Octagon; fill = "#37474F"; border = "#000000"; stroke = Solid; tenths = 20i32; ink = "#FFFFFF" }
+    | Fn => { shape = RoundRectangle; fill = "#FAFAFA"; border = "#616161"; stroke = Solid; tenths = 10i32; ink = "#000000" }
+    | Data => { shape = Rectangle; fill = "#FFF6D5"; border = "#8D6E63"; stroke = Solid; tenths = 10i32; ink = "#000000" }
+    | Type => { shape = Hexagon; fill = "#EDE7F6"; border = "#5E35B1"; stroke = Solid; tenths = 15i32; ink = "#000000" }
+    | Api => { shape = RoundRectangle; fill = "#BBDEFB"; border = "#0D47A1"; stroke = Solid; tenths = 25i32; ink = "#000000" }
+    | Op => { shape = Hexagon; fill = "#E1BEE7"; border = "#6A1B9A"; stroke = Solid; tenths = 20i32; ink = "#000000" }
+    | Seam => { shape = Octagon; fill = "#B2DFDB"; border = "#00695C"; stroke = Solid; tenths = 15i32; ink = "#000000" }
+    | Note => { shape = Rectangle; fill = "#FFFDE7"; border = "#F9A825"; stroke = Dashed; tenths = 20i32; ink = "#000000" }
+    | Cfg => { shape = Parallelogram; fill = "#ECEFF1"; border = "#455A64"; stroke = Solid; tenths = 10i32; ink = "#000000" }
+    | Err => { shape = Octagon; fill = "#FFCDD2"; border = "#B71C1C"; stroke = Solid; tenths = 25i32; ink = "#000000" }
+    | Be => { shape = Rectangle; fill = "#E3F2FD"; border = "#1565C0"; stroke = Solid; tenths = 10i32; ink = "#000000" }
+    | Ext => { shape = Ellipse; fill = "#EEEEEE"; border = "#424242"; stroke = Solid; tenths = 10i32; ink = "#000000" }
+    | Class => { shape = Rectangle; fill = "#FFFFFF"; border = "#212121"; stroke = Solid; tenths = 30i32; ink = "#000000" }
+    | Impl => { shape = RoundRectangle; fill = "#FFFFFF"; border = "#424242"; stroke = Solid; tenths = 15i32; ink = "#000000" }
+
+:| build =
+    | SingleFlight
+    | Hopacsota
+    | Shared
+
+:~ kind_style_in (k : node_kind) (b : build) : node_style =
+    := base = kind_style k
+    ?= k ?|
+    | Impl =>
+        ?= b ?|
+        | SingleFlight => { base ?| fill = "#C8E6C9"; border = "#1B5E20" }
+        | Hopacsota => { base ?| fill = "#FFE0B2"; border = "#BF360C" }
+        | Shared => base
+    | _ => base
+
+:~ link_style (k : edge_kind) : edge_style =
+    ?= k ?|
+    | Flow => { color = "#263238"; stroke = Solid; tenths = 30i32; head = Standard }
+    | Call => { color = "#1565C0"; stroke = Solid; tenths = 15i32; head = Standard }
+    | DataFlow => { color = "#9E9E9E"; stroke = Dashed; tenths = 10i32; head = Standard }
+    | SeamLink => { color = "#00897B"; stroke = Dotted; tenths = 15i32; head = Standard }
+    | ToSingleFlight => { color = "#2E7D32"; stroke = Solid; tenths = 30i32; head = WhiteDelta }
+    | ToHopacsota => { color = "#E65100"; stroke = Solid; tenths = 30i32; head = WhiteDelta }
+    | Engine => { color = "#BF360C"; stroke = DashDotted; tenths = 18i32; head = Standard }
+    | Reuse => { color = "#AD1457"; stroke = Dashed; tenths = 25i32; head = WhiteDiamond }
+    | NoteLink => { color = "#F9A825"; stroke = Dotted; tenths = 15i32; head = Bare }
+
+:~ tenths_text (t : i32) : string = show_i32 (t / 10i32) ++# "." ++# show_i32 (t - (t / 10i32) * 10i32)
+
+:~ xml (s : string) : string =
+    s
+    |> sm'::replace "&" "&amp;"
+    |> sm'::replace "<" "&lt;"
+    |> sm'::replace ">" "&gt;"
+    |> sm'::replace "\"" "&quot;"
+
+:~ ^ wrapped (width : i32) (words : list string) (line : string) (acc : list string) : list string =
+    ?= words ?|
+    | w :: rest =>
+        ? line =. "" ?> wrapped width rest w acc
+        |? (sm'::length line : i32) + 1i32 + (sm'::length w : i32) > width ?> wrapped width rest w (line :: acc)
+        |: wrapped width rest (line ++# " " ++# w) acc
+    | [] => ? line =. "" ?> listm::rev acc |: listm::rev (line :: acc)
+
+:~ wrap (width : i32) (text : string) : list string = wrapped width (sm'::split_list " " text) "" []
+
+:~ longest (lines : list string) : i32 = lines |> listm::fold (\ m (l : string) => ? (sm'::length l : i32) > m ?> (sm'::length l : i32) |: m) 0i32
+
+:~ sized_box (id : string) (title : string) (detail : string) (style : node_style) (wrap_at : i32) : box =
+    := lines = ? detail =. "" ?> [] |: wrap wrap_at detail
+    := chars = ? (sm'::length title : i32) * 11i32 / 10i32 > longest lines ?> (sm'::length title : i32) * 11i32 / 10i32 |: longest lines
+    := base = chars * 69i32 / 10i32 + 30i32
+    := tall = (listm::length lines + 1i32) * 155i32 / 10i32 + 16i32
+    := wide =
+        ?= style.shape ?|
+        | Hexagon => base + 34i32
+        | Octagon => base + 34i32
+        | Parallelogram => base + 30i32
+        | Ellipse => base * 5i32 / 4i32
+        | _ => base
+    := high = ?= style.shape ?| Ellipse => tall * 13i32 / 10i32 | _ => tall
+    { id = id; title = title; lines = lines; style = style; width = wide; height = high; font = 12i32; bold = !+ }
+
+:= any_of \* t. (test : t -> bool) (xs : list t) : bool = xs |> listm::fold (\ found x => found || test x) !-

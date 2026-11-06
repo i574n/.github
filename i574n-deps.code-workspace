@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"name": "The-Spiral-Language",
+			"path": "../spiral/deps/The-Spiral-Language"
+		}
+	],
+	"settings": {
+		"FSharp.inlayHints.typeAnnotations": false,
+		"dotnet.defaultSolution": "disable"
+	}
+}

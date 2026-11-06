@@ -1,0 +1,204 @@
+:< sm'_operators
+
+:! buffer_object = ()
+:! graph_object = ()
+:! module_object = ()
+:! canvas_object = ()
+
+:| handle t =
+    | Handle : i32
+
+:== text_buffer = handle buffer_object
+:== yed_graph = handle graph_object
+:== yed_module = handle module_object
+:== canvas = handle canvas_object
+
+:= id_of \* t. (h : handle t) : i32 = ?= h ?| Handle i => i
+
+:= host_helpers () : () =
+    global """
+class GraphsCanvas(val image: java.awt.image.BufferedImage, val g: java.awt.Graphics2D, val unit: Double)
+object GraphsHost {
+    val objects = java.util.ArrayList<Any>()
+    fun keep(o: Any): Int { objects.add(o); return objects.size - 1 }
+    fun sb(h: Int): StringBuilder = objects[h] as StringBuilder
+    fun gr(h: Int): y.J.gA = objects[h] as y.J.gA
+    fun mo(h: Int): y.B.j = objects[h] as y.B.j
+    fun cv(h: Int): GraphsCanvas = objects[h] as GraphsCanvas
+    fun open(text: String): y.J.gA {
+        val graph = y.J.gA()
+        Class.forName("y.J.A.A").getConstructor(y.A.E::class.java).newInstance(graph)
+        y.H.Q().ā(graph, text.byteInputStream(Charsets.UTF_8))
+        return graph
+    }
+    fun module(name: String): y.B.j = Class.forName(name).getDeclaredConstructor().newInstance() as y.B.j
+    fun set(module: y.B.j, key: String, value: String) {
+        val handler = module.ă()
+        val current = handler.đ(key)
+        val typed: Any = when (current) {
+            is Boolean -> value.toBoolean()
+            is Int -> value.toInt()
+            is Double -> value.toDouble()
+            else -> value.intern()
+        }
+        handler.ă(key, typed)
+    }
+    fun run(module: y.B.j, graph: y.J.gA): Int { module.ă(graph); return module.Ĉ().toInt() }
+    fun writeGraphml(graph: y.J.gA, path: String) { java.io.FileOutputStream(path).use { y.H.Q().ā(graph, it) } }
+    fun writeSvg(graph: y.J.gA, path: String) { java.io.BufferedOutputStream(java.io.FileOutputStream(path)).use { B.A.D.C().ā(graph, it) } }
+    fun writePng(graph: y.J.gA, path: String, maxPixels: Long) {
+        val handler = y.H.A(javax.imageio.ImageIO.getImageWritersByFormatName("png").next())
+        handler.ă(20.0)
+        val bounds = graph.ĥ()
+        val view = handler.ć(graph)
+        val w = bounds.width + 40.0
+        val h = bounds.height + 40.0
+        val scale = Math.min(1.0, Math.sqrt(maxPixels / (w * h)))
+        val size = java.awt.Dimension(Math.ceil(w * scale).toInt(), Math.ceil(h * scale).toInt())
+        view.setSize(size)
+        view.setPreferredSize(size)
+        view.Ć(bounds.x - 20.0, bounds.y - 20.0, w, h)
+        java.io.BufferedOutputStream(java.io.FileOutputStream(path)).use { handler.ā(view, it) }
+        graph.ă(view as y.J.MB)
+    }
+    fun canvas(rawPng: String, header: Int): GraphsCanvas {
+        val body = javax.imageio.ImageIO.read(java.io.File(rawPng))
+        val unit = Math.max(1.0, body.width / 4000.0)
+        val top = (header * unit).toInt()
+        val image = java.awt.image.BufferedImage(body.width, body.height + top, java.awt.image.BufferedImage.TYPE_INT_RGB)
+        val g = image.createGraphics()
+        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
+        g.setRenderingHint(java.awt.RenderingHints.KEY_TEXT_ANTIALIASING, java.awt.RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+        g.color = java.awt.Color.WHITE
+        g.fillRect(0, 0, image.width, image.height)
+        g.drawImage(body, 0, top, null)
+        return GraphsCanvas(image, g, unit)
+    }
+    fun px(c: GraphsCanvas, v: Int): Int = (v * c.unit).toInt()
+    fun rect(c: GraphsCanvas, x: Int, y: Int, w: Int, h: Int, color: String) {
+        c.g.color = java.awt.Color.decode(color)
+        c.g.fillRect(px(c, x), px(c, y), if (w < 0) c.image.width else px(c, w), px(c, h))
+    }
+    fun text(c: GraphsCanvas, text: String, x: Int, y: Int, size: Int, bold: Boolean, color: String): Int {
+        c.g.color = java.awt.Color.decode(color)
+        c.g.font = java.awt.Font("SansSerif", if (bold) java.awt.Font.BOLD else java.awt.Font.PLAIN, px(c, size))
+        c.g.drawString(text, px(c, x), px(c, y))
+        return (c.g.fontMetrics.stringWidth(text) / c.unit).toInt()
+    }
+    fun centered(c: GraphsCanvas, text: String, x: Int, y: Int, w: Int, h: Int, size: Int) {
+        c.g.color = java.awt.Color.BLACK
+        c.g.font = java.awt.Font("SansSerif", java.awt.Font.PLAIN, px(c, size))
+        val m = c.g.fontMetrics
+        c.g.drawString(text, px(c, x) + (px(c, w) - m.stringWidth(text)) / 2, px(c, y) + (px(c, h) + m.ascent - m.descent) / 2)
+    }
+    fun stroke(c: GraphsCanvas, tenths: Int, pattern: String): java.awt.BasicStroke {
+        val w = (tenths / 10.0 * c.unit).toFloat()
+        val u = c.unit.toFloat()
+        return when (pattern) {
+            "dashed" -> java.awt.BasicStroke(w, java.awt.BasicStroke.CAP_BUTT, java.awt.BasicStroke.JOIN_MITER, 10f, floatArrayOf(8f * u, 5f * u), 0f)
+            "dotted" -> java.awt.BasicStroke(w, java.awt.BasicStroke.CAP_BUTT, java.awt.BasicStroke.JOIN_MITER, 10f, floatArrayOf(2f * u, 4f * u), 0f)
+            "dashed_dotted" -> java.awt.BasicStroke(w, java.awt.BasicStroke.CAP_BUTT, java.awt.BasicStroke.JOIN_MITER, 10f, floatArrayOf(10f * u, 4f * u, 2f * u, 4f * u), 0f)
+            else -> java.awt.BasicStroke(w)
+        }
+    }
+    fun shape(c: GraphsCanvas, kind: String, x0: Int, y0: Int, w0: Int, h0: Int, fill: String, border: String, tenths: Int, pattern: String) {
+        val x = px(c, x0); val y = px(c, y0); val w = px(c, w0); val h = px(c, h0)
+        val s: java.awt.Shape = when (kind) {
+            "hexagon", "octagon" -> java.awt.Polygon(intArrayOf(x, x + h / 2, x + w - h / 2, x + w, x + w - h / 2, x + h / 2), intArrayOf(y + h / 2, y, y, y + h / 2, y + h, y + h), 6)
+            "roundrectangle" -> java.awt.geom.RoundRectangle2D.Double(x.toDouble(), y.toDouble(), w.toDouble(), h.toDouble(), h / 2.0, h / 2.0)
+            "parallelogram" -> java.awt.Polygon(intArrayOf(x + h / 2, x + w, x + w - h / 2, x), intArrayOf(y, y, y + h, y + h), 4)
+            "ellipse" -> java.awt.geom.Ellipse2D.Double(x.toDouble(), y.toDouble(), w.toDouble(), h.toDouble())
+            else -> java.awt.Rectangle(x, y, w, h)
+        }
+        c.g.color = java.awt.Color.decode(fill)
+        c.g.fill(s)
+        c.g.color = java.awt.Color.decode(border)
+        c.g.stroke = stroke(c, tenths, pattern)
+        c.g.draw(s)
+    }
+    fun line(c: GraphsCanvas, x1: Int, y1: Int, x2: Int, y2: Int, color: String, tenths: Int, pattern: String) {
+        c.g.color = java.awt.Color.decode(color)
+        c.g.stroke = stroke(c, tenths, pattern)
+        c.g.drawLine(px(c, x1), px(c, y1), px(c, x2), px(c, y2))
+    }
+    fun save(c: GraphsCanvas, path: String) {
+        c.g.dispose()
+        javax.imageio.ImageIO.write(c.image, "png", java.io.File(path))
+    }
+}
+"""
+
+:= show_i32 (x : i32) : string = $'(!x).toString()' : string
+
+:= say (text : string) : () = $'println(!text)' : ()
+
+:= env_or (name : string) (fallback : string) : string = $'(System.getenv(!name) ?: !fallback)' : string
+
+:= read_text (path : string) : string = $'java.io.File(!path).readText(Charsets.UTF_8)' : string
+
+:= write_text (path : string) (text : string) : () = $'java.io.File(!path).writeText(!text, Charsets.UTF_8)' : ()
+
+:= make_dirs (path : string) : () = $'java.io.File(!path).mkdirs()' : ()
+
+:= delete_file (path : string) : () = $'java.io.File(!path).delete()' : ()
+
+:= buffer () : text_buffer = Handle ($'GraphsHost.keep(StringBuilder())' : i32)
+
+:= add (b : text_buffer) (text : string) : () =
+    := h = id_of b
+    $'GraphsHost.sb(!h).append(!text)' : ()
+
+:= text_of (b : text_buffer) : string =
+    := h = id_of b
+    $'GraphsHost.sb(!h).toString()' : string
+
+:= yed_open (text : string) : yed_graph = Handle ($'GraphsHost.keep(GraphsHost.open(!text))' : i32)
+
+:= yed_module (name : string) : yed_module = Handle ($'GraphsHost.keep(GraphsHost.module(!name))' : i32)
+
+:= yed_set (m : yed_module) (key : string) (value : string) : () =
+    := h = id_of m
+    $'GraphsHost.set(GraphsHost.mo(!h), !key, !value)' : ()
+
+:= yed_run (m : yed_module) (g : yed_graph) : i32 =
+    := hm = id_of m
+    := hg = id_of g
+    $'GraphsHost.run(GraphsHost.mo(!hm), GraphsHost.gr(!hg))' : i32
+
+:= write_graphml (g : yed_graph) (path : string) : () =
+    := h = id_of g
+    $'GraphsHost.writeGraphml(GraphsHost.gr(!h), !path)' : ()
+
+:= write_svg (g : yed_graph) (path : string) : () =
+    := h = id_of g
+    $'GraphsHost.writeSvg(GraphsHost.gr(!h), !path)' : ()
+
+:= write_png (g : yed_graph) (path : string) (max_mega_pixels : i32) : () =
+    := h = id_of g
+    $'GraphsHost.writePng(GraphsHost.gr(!h), !path, (!max_mega_pixels).toLong() * 1000000L)' : ()
+
+:= canvas_open (raw_png : string) (header : i32) : canvas = Handle ($'GraphsHost.keep(GraphsHost.canvas(!raw_png, !header))' : i32)
+
+:= canvas_rect (c : canvas) (x : i32) (y : i32) (w : i32) (high : i32) (color : string) : () =
+    := h = id_of c
+    $'GraphsHost.rect(GraphsHost.cv(!h), !x, !y, !w, !high, !color)' : ()
+
+:= canvas_text (c : canvas) (text : string) (x : i32) (y : i32) (size : i32) (bold : bool) (color : string) : i32 =
+    := h = id_of c
+    $'GraphsHost.text(GraphsHost.cv(!h), !text, !x, !y, !size, !bold, !color)' : i32
+
+:= canvas_centered (c : canvas) (text : string) (x : i32) (y : i32) (w : i32) (high : i32) (size : i32) : () =
+    := h = id_of c
+    $'GraphsHost.centered(GraphsHost.cv(!h), !text, !x, !y, !w, !high, !size)' : ()
+
+:= canvas_shape (c : canvas) (kind : string) (x : i32) (y : i32) (w : i32) (high : i32) (fill : string) (border : string) (tenths : i32) (pattern : string) : () =
+    := h = id_of c
+    $'GraphsHost.shape(GraphsHost.cv(!h), !kind, !x, !y, !w, !high, !fill, !border, !tenths, !pattern)' : ()
+
+:= canvas_line (c : canvas) (x1 : i32) (y1 : i32) (x2 : i32) (y2 : i32) (color : string) (tenths : i32) (pattern : string) : () =
+    := h = id_of c
+    $'GraphsHost.line(GraphsHost.cv(!h), !x1, !y1, !x2, !y2, !color, !tenths, !pattern)' : ()
+
+:= canvas_save (c : canvas) (path : string) : () =
+    := h = id_of c
+    $'GraphsHost.save(GraphsHost.cv(!h), !path)' : ()

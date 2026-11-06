@@ -1,0 +1,138 @@
+param(
+    [int] $Hours = 24,
+    [int] $Count = 2000,
+    [switch] $Node,
+    [string] $NodeHost,
+    [string] $NodeKit,
+    [int] $SampleSec = 5,
+    [string[]] $Teams = @('main', 'x', 'kit', 'eoie', 'fiscal', 'compiler', 'tibia', 'heal', 'healing')
+)
+$ErrorActionPreference = 'Stop'
+$nodeEnv = Join-Path $PSScriptRoot 'node-env.ps1'
+if (Test-Path $nodeEnv) { . $nodeEnv }
+if (-not $NodeHost) { $NodeHost = $NodeRoutes[0] }
+if (-not $NodeKit) { $NodeKit = $NodeKitPath }
+
+function Get-JobRows([string[]] $Lines, [string] $Machine) {
+    $since = [DateTimeOffset]::UtcNow.AddHours(-$Hours).ToUnixTimeMilliseconds()
+    foreach ($l in $Lines) {
+        if ($l -notmatch ' id=job-(\d+)-(\S+) state=(\S+) exit=(\S+) elapsed_ms=(\d+)') { continue }
+        $started = [int64]$Matches[1]
+        if ($started -lt $since) { continue }
+        $label = $Matches[2]
+        [pscustomobject]@{
+            Machine = $Machine
+            Team = if (($label -split '-', 2)[0] -in $Teams) { ($label -split '-', 2)[0] } else { '(no team)' }
+            Label = $label
+            State = $Matches[3]
+            Exit = $Matches[4]
+            Hours = [double]$Matches[5] / 3.6e6
+            PeakMb = if ($l -match 'peak_private_mb=(\d+)') { [int]$Matches[1] } else { $null }
+        }
+    }
+}
+
+$rows = @(Get-JobRows @(& "$env:LOCALAPPDATA\kit\bin\kit.exe" job list $Count 2>&1 | ForEach-Object { "$_" }) 'box')
+if ($Node) { $rows += @(Get-JobRows @(ssh -o ConnectTimeout=15 $NodeHost "$NodeKit job list $Count" 2>&1 | ForEach-Object { "$_" }) 'node') }
+
+"=== jobs started in the last $Hours h, by machine and team (wall hours; a job's wall time is not its CPU time)"
+$rows | Group-Object Machine, Team | ForEach-Object {
+    $g = $_.Group
+    [pscustomobject]@{
+        Machine = $g[0].Machine
+        Team = $g[0].Team
+        Jobs = $g.Count
+        WallH = [math]::Round(($g | Measure-Object Hours -Sum).Sum, 1)
+        Running = @($g | Where-Object State -eq 'running').Count
+        Stopped = @($g | Where-Object State -eq 'stopped').Count
+        NonZero = @($g | Where-Object { $_.State -notin 'running', 'stopped' -and $_.Exit -notin '0', '-' }).Count
+        MaxPeakMb = ($g | Measure-Object PeakMb -Maximum).Maximum
+    }
+} | Sort-Object Machine, WallH -Descending | Format-Table -AutoSize | Out-String -Width 160
+
+"=== the 10 longest jobs"
+$rows | Sort-Object Hours -Descending | Select-Object -First 10 Machine, Label, State, Exit, @{ n = 'WallH'; e = { [math]::Round($_.Hours, 2) } }, PeakMb | Format-Table -AutoSize | Out-String -Width 160
+
+"=== box processes by name, outside any live kit job's tree and any Claude session, at least 200 MB working set (candidates for dangling)"
+$all = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, WorkingSetSize, CommandLine, UserModeTime, KernelModeTime)
+$byId = @{}; foreach ($p in $all) { $byId[[int]$p.ProcessId] = $p }
+$jobRoots = @(Get-ChildItem "$env:LOCALAPPDATA\kit\jobs" -Directory | Where-Object { -not (Test-Path (Join-Path $_.FullName 'exit')) } | ForEach-Object {
+    foreach ($f in 'pid', 'supervisor') { $p = Join-Path $_.FullName $f; if (Test-Path $p) { [int](Get-Content -LiteralPath $p -Raw).Trim() } }
+})
+$inJob = @{}
+foreach ($p in $all) {
+    $seen = @{}; $cur = [int]$p.ProcessId
+    while ($cur -and -not $seen[$cur]) { $seen[$cur] = 1; if ($cur -in $jobRoots -or $byId[$cur].Name -eq 'claude.exe') { $inJob[[int]$p.ProcessId] = 1; break }; $cur = if ($byId[$cur]) { [int]$byId[$cur].ParentProcessId } else { 0 } }
+}
+$daemonPorts = @{}
+foreach ($c in @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -ge 13905 -and $_.LocalPort -lt 15000 })) { $daemonPorts[[int]$c.OwningProcess] = [int]$c.LocalPort }
+$daemonOwner = @{}
+function Get-DaemonOwner([int] $Port) {
+    if (-not $daemonOwner.ContainsKey($Port)) {
+        $daemonOwner[$Port] = try {
+            $client = [Net.Sockets.TcpClient]::new(); if (-not $client.ConnectAsync('127.0.0.1', $Port).Wait(500)) { throw 'no connect' }
+            $writer = [IO.StreamWriter]::new($client.GetStream()); $writer.NewLine = "`n"; $writer.WriteLine('status'); $writer.Flush()
+            $line = [IO.StreamReader]::new($client.GetStream()).ReadLine(); $client.Dispose()
+            $owner = ($line -split "`t")[6]
+            if ($owner -match 'argv .*--path (\S+)') { "cells:$Port $(Split-Path $Matches[1] -Leaf)" } elseif ($owner) { "cells:$Port $($owner.Substring(0, [Math]::Min(40, $owner.Length)))" } else { "cells:$Port" }
+        } catch { "cells:$Port (no status)" }
+    }
+    $daemonOwner[$Port]
+}
+function Get-Owner([int] $Id) {
+    $seen = @{}; $cur = $Id
+    while ($cur -and -not $seen[$cur]) { $seen[$cur] = 1; if ($daemonPorts.ContainsKey($cur)) { return Get-DaemonOwner $daemonPorts[$cur] }; $cur = if ($byId[$cur]) { [int]$byId[$cur].ParentProcessId } else { 0 } }
+    '(none)'
+}
+$all | Where-Object { -not $inJob[[int]$_.ProcessId] -and $_.WorkingSetSize -ge 200MB } | ForEach-Object { $_ | Add-Member Owner (Get-Owner ([int]$_.ProcessId)) -PassThru } | Group-Object Name, Owner | ForEach-Object {
+    [pscustomobject]@{ Name = $_.Group[0].Name; Owner = $_.Group[0].Owner; Count = $_.Count; WorkingSetMb = [math]::Round(($_.Group | Measure-Object WorkingSetSize -Sum).Sum / 1MB) }
+} | Sort-Object WorkingSetMb -Descending | Format-Table -AutoSize | Out-String -Width 160
+
+"=== Claude session tool shells by lane (live processes under each session's claude.exe; --resume names the lane, i574n is main)"
+$sessionOf = @{}
+foreach ($c in $all | Where-Object { $_.Name -eq 'claude.exe' -and "$($_.CommandLine)" -match 'claude-code' }) {
+    $sessionOf[[int]$c.ProcessId] = if ("$($c.CommandLine)" -match '--resume\s+(\S+)') { if ($Matches[1] -eq 'i574n') { 'main' } else { $Matches[1] } } else { '(no --resume)' }
+}
+$all | Where-Object { $_.Name -ne 'claude.exe' } | ForEach-Object {
+    $seen = @{}; $cur = [int]$_.ParentProcessId; $lane = $null
+    while ($cur -and -not $seen[$cur]) { $seen[$cur] = 1; if ($sessionOf.ContainsKey($cur)) { $lane = $sessionOf[$cur]; break }; $cur = if ($byId[$cur]) { [int]$byId[$cur].ParentProcessId } else { 0 } }
+    if ($lane) { [pscustomobject]@{ Lane = $lane; Ws = $_.WorkingSetSize; Cpu = ([double]$_.UserModeTime + [double]$_.KernelModeTime) / 1e7 } }
+} | Group-Object Lane | ForEach-Object {
+    [pscustomobject]@{ Lane = $_.Name; Processes = $_.Count; WorkingSetMb = [math]::Round(($_.Group | Measure-Object Ws -Sum).Sum / 1MB); CpuSeconds = [math]::Round(($_.Group | Measure-Object Cpu -Sum).Sum) }
+} | Sort-Object CpuSeconds -Descending | Format-Table -AutoSize | Out-String -Width 160
+
+"=== box CPU right now, by process name (TotalProcessorTime delta over $SampleSec s; 100% = all $([Environment]::ProcessorCount) logical cores)"
+$before = @{}; foreach ($p in Get-Process) { try { $before[$p.Id] = @($p.Name, $p.TotalProcessorTime.TotalSeconds) } catch { } }
+Start-Sleep -Seconds $SampleSec
+$deltas = foreach ($p in Get-Process) { try { if ($before.ContainsKey($p.Id)) { [pscustomobject]@{ Name = $p.Name; Cpu = $p.TotalProcessorTime.TotalSeconds - $before[$p.Id][1] } } } catch { } }
+$total = [Environment]::ProcessorCount * $SampleSec
+$deltas | Group-Object Name | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Count = $_.Count; BoxPct = [math]::Round(100 * ($_.Group | Measure-Object Cpu -Sum).Sum / $total, 1) } } |
+    Where-Object BoxPct -ge 0.5 | Sort-Object BoxPct -Descending | Select-Object -First 12 | Format-Table -AutoSize | Out-String -Width 160
+"box busy: {0:N1}% of all cores" -f (100 * ($deltas | Measure-Object Cpu -Sum).Sum / $total)
+
+"=== per-lane idle gaps, last 6h (gaps >= 10min; ALARM if idle > 25% AND team has ready items; LANE-IDLE-GAPS) ==="
+$idleWinH = 6; $idleCut = (Get-Date).AddHours(-$idleWinH); $idleGapMin = 10
+$teamMap = @{}; $teamsFile = Join-Path $env:USERPROFILE '.claude\autonomous\teams.txt'
+if (Test-Path $teamsFile) { foreach ($ln in Get-Content $teamsFile) { if ($ln -match '^([0-9a-f]+)=(\S+)') { $teamMap[$Matches[1]] = $Matches[2] } } }
+$idleBl = Join-Path $PSScriptRoot '..\docs\backlog'; $idleKit = Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe'; $readyCache = @{}
+function Test-TeamReady([string] $team) {
+    if (-not $team -or $team -eq '(unmapped)') { return $false }
+    if (-not $readyCache.ContainsKey($team)) {
+        $o = & $idleKit agile next $idleBl --team $team --load light,none --open 2>&1 | Out-String
+        $readyCache[$team] = ($o -match 'unblocks=')
+    }
+    $readyCache[$team]
+}
+$projDir = Join-Path $env:USERPROFILE '.claude\projects\C--home-git'
+$rxTs = [regex]'"timestamp":"([0-9T:\-\.Z]{19,})"'
+@(foreach ($jf in Get-ChildItem $projDir -Filter *.jsonl -EA SilentlyContinue | Where-Object { $_.LastWriteTime -gt $idleCut }) {
+    $st = [Collections.Generic.List[datetime]]::new()
+    foreach ($line in [IO.File]::ReadLines($jf.FullName)) { $m = $rxTs.Match($line); if ($m.Success) { try { $t = [datetime]::Parse($m.Groups[1].Value).ToLocalTime(); if ($t -gt $idleCut) { $st.Add($t) } } catch {} } }
+    if ($st.Count -lt 2) { continue }
+    $s = $st | Sort-Object; $idle = 0.0; $long = 0.0
+    for ($i = 1; $i -lt $s.Count; $i++) { $g = ($s[$i] - $s[$i - 1]).TotalMinutes; if ($g -ge $idleGapMin) { $idle += $g; if ($g -gt $long) { $long = $g } } }
+    $u = $jf.BaseName; $team = '(unmapped)'; foreach ($pre in $teamMap.Keys) { if ($u.StartsWith($pre)) { $team = $teamMap[$pre]; break } }
+    $pct = [math]::Round(100 * $idle / ($idleWinH * 60))
+    $flag = if ($pct -gt 25 -and (Test-TeamReady $team)) { 'ALARM idle+ready' } elseif ($pct -gt 25) { 'idle (no ready)' } else { '' }
+    [pscustomobject]@{ Team = $team; IdlePct = $pct; IdleMin = [int]$idle; LongestMin = [int]$long; Flag = $flag }
+}) | Sort-Object IdleMin -Descending | Format-Table -AutoSize | Out-String -Width 120

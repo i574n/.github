@@ -1,0 +1,17 @@
+param(
+    $fast,
+    $ScriptDir = $PSScriptRoot
+)
+Set-Location $ScriptDir
+$ErrorActionPreference = "Stop"
+
+. ../../spiral/scripts/core.ps1
+
+
+{ pwsh ../../spiral/scripts/build.ps1 } | Invoke-Block
+
+{ pwsh ../../dice/scripts/build.ps1 } | Invoke-Block -OnError Continue
+
+{ pwsh ../../alphabet/scripts/build.ps1 } | Invoke-Block -OnError Continue
+
+{ pwsh ../../tibia/scripts/build.ps1 } | Invoke-Block -OnError Continue

@@ -1,0 +1,4 @@
+* text=auto eol=lf
+
+*.livemd.ipynb linguist-generated
+*.livemd.html linguist-generated
