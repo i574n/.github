@@ -1,0 +1,11 @@
+///- --no-respell
+union task_parent =
+    | Parent :: string * string -> task_parent
+inl parent_of_scrum_xp_s1 () = Parent ("SCRUM-XP-S1", "KIT-SCRUM-XP")
+inl parent_of_scrum_xp_s2 () = Parent ("SCRUM-XP-S2", "KIT-SCRUM-XP")
+inl parent_of_scrum_xp_s3 () = Parent ("SCRUM-XP-S3", "KIT-SCRUM-XP")
+inl parent_of_scrum_xp_s4 () = Parent ("SCRUM-XP-S4", "KIT-SCRUM-XP")
+inl parent_of_scrum_xp_s5 () = Parent ("SCRUM-XP-S5", "KIT-SCRUM-XP")
+inl parent_of_scrum_xp_s6 () = Parent ("SCRUM-XP-S6", "KIT-SCRUM-XP")
+inl parent_of_scrum_xp_s7 () = Parent ("SCRUM-XP-S7", "KIT-SCRUM-XP")
+inl parent_of_scrum_xp_s8 () = Parent ("SCRUM-XP-S8", "KIT-SCRUM-XP")

@@ -1,7 +1,0 @@
-edition: 3
-packageDir: ../../../spiral/lib
-packages:
-    |core-
-    spiral-
-modules:
-    scheduler

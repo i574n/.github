@@ -5,7 +5,7 @@ param(
     [string] $NodeHost,
     [string] $NodeKit,
     [int] $SampleSec = 5,
-    [string[]] $Teams = @('main', 'x', 'kit', 'eoie', 'fiscal', 'compiler', 'tibia', 'heal', 'healing')
+    [string[]] $Teams = @('main', 'x', 'kit', 'fiscal', 'compiler', 'tibia', 'heal', 'healing')
 )
 $ErrorActionPreference = 'Stop'
 $nodeEnv = Join-Path $PSScriptRoot 'node-env.ps1'

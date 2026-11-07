@@ -69,7 +69,7 @@
 
 :~ area_of_word (w : string) : area =
     ? w =. "main" ?> Main
-    |? w =. "kit" || w =. "eoie" ?> Kit
+    |? w =. "kit" ?> Kit
     |? w =. "x" || w =. "x-dumps" ?> Xlane
     |? w =. "fiscal" || w =. "sefaz" ?> Fiscal
     |? w =. "compiler" || w =. "spiral" || w =. "backend" || w =. "lib" || w =. "core" || w =. "zig" || w =. "gleam" || w =. "formatter" || w =. "hopacsota" || w =. "edition" ?> Compiler

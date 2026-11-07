@@ -85,7 +85,7 @@ if ($Land) {
 }
 if ($Summary) {
     $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Pattern))
-    $read = "`$j = Join-Path `$env:LOCALAPPDATA 'eoie\jobs\$Summary'; if (!(Test-Path `$j)) { 'node-proof / no job $Summary'; exit 1 }; " +
+    $read = "`$j = Join-Path `$env:LOCALAPPDATA 'kit\jobs\$Summary'; if (!(Test-Path `$j)) { 'node-proof / no job $Summary'; exit 1 }; " +
         "`$pattern = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$encoded')); " +
         "`$exit = (Get-Content (Join-Path `$j 'exit') -ErrorAction Ignore) -split '\t'; " +
         "`$seconds = if (`$exit.Count -ge 2) { ""`$([int](([long]`$exit[1] - [long](Get-Content (Join-Path `$j 'started_ms'))) / 1000)) s"" } else { 'still running' }; " +
@@ -142,4 +142,10 @@ foreach ($repo in $Repos) {
 }
 if ($LandRepos) { Write-SyncManifest $Label $LandRepos }
 $coreCheck = $RequireCore ? @('-RequireCore', $RequireCore) : @()
-pwsh -NoProfile -File $remote $JobMachine job @coreCheck start $Label $TimeoutMs pwsh -NoProfile -File "$stage\run.ps1" 2>&1 | Select-Object -Last 1
+$start = @(pwsh -NoProfile -File $remote $JobMachine job @coreCheck start $Label $TimeoutMs pwsh -NoProfile -File "$stage\run.ps1" 2>&1 | ForEach-Object { "$_" })
+$started = @($start -match '^kit job start ok ')
+if ($started.Count -eq 1) { $started[0] }
+else {
+    $start
+    throw "node-proof / job start failed for $Label (the job may still run: check 'remote.ps1 $JobMachine job list' before any relaunch)"
+}

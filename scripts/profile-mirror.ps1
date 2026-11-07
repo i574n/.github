@@ -55,23 +55,44 @@ $globFiles = @(
 )
 $scratchRoot = Join-Path $env:TEMP 'claude'
 
-$files = [Collections.Generic.List[string]]::new()
-foreach ($tree in $wholeTrees | Where-Object { Test-Path $_ }) {
-    Get-ChildItem $tree -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.Extension -ne '.lease' } | ForEach-Object { $files.Add($_.FullName) }
+# INCREMENTAL persistent snapshot (was: a full per-file copy of ~3GB/69k files every run, which ground at ~47% CPU for 15min under 100% box load and stalled the lane - MIRROR-TRANSFER-COST n45). robocopy /MIR refreshes ONLY the delta into a FIXED snapshot dir; /R:0 /W:0 skips a locked file instead of hanging. robocopy exit 0-7 = success, 8+ = hard failure. kit's incremental dir-mirror verb supersedes this later.
+$snapshot = Join-Path $env:TEMP 'profile-mirror-snapshot'
+New-Item -ItemType Directory -Force $snapshot | Out-Null
+$lockedSkips = 0
+$roboFails = [Collections.Generic.List[string]]::new()
+function Sync-RoboTree([string] $src, [string[]] $roboArgs) {
+    if (-not (Test-Path $src)) { return }
+    $dst = Join-Path $snapshot $src.Substring(3)
+    $out = robocopy $src $dst @roboArgs /R:0 /W:0 /NFL /NDL /NP /NJH 2>&1
+    $code = $LASTEXITCODE
+    $fl = ($out | Select-String '^\s*Files :\s').Line
+    if ($fl -and $fl -match 'Files :\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+)\s+\d+') { $script:lockedSkips += [int]$matches[1] }
+    if ($code -ge 8) { $script:roboFails.Add("$src=$code") }
 }
-foreach ($file in $singleFiles | Where-Object { Test-Path $_ }) { $files.Add($file) }
-if (Test-Path $scratchRoot) {
-    Get-ChildItem $scratchRoot -Recurse -File -Force -ErrorAction SilentlyContinue |
-        Where-Object { $_.Extension -in $sourceExtensions -and $_.Length -lt 2MB -and $_.FullName -notmatch $heavyFolders -and $_.FullName -notmatch '\\tasks\\' } |
-        ForEach-Object { $files.Add($_.FullName) }
+foreach ($tree in $wholeTrees) { Sync-RoboTree $tree @('/MIR', '/XF', '*.lease') }
+# scratch ($env:TEMP\claude) is DELIBERATELY NOT mirrored: it is ephemeral, regenerable session scratch (~1GB/71k tiny files) that bloated the hot-lane tar+scp to 3.9GB and helped starve the run on the pinned box (MIRROR-TRANSFER-COST n47). Durable drafts belong in the repo / kit store, not here. The existing snapshot scratch subtree is cleared once (no live tar) when this lands.
+foreach ($file in ($singleFiles | Where-Object { Test-Path $_ })) {
+    $copy = Join-Path $snapshot $file.Substring(3)
+    try { [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($copy)) | Out-Null; [IO.File]::Copy($file, $copy, $true) } catch { $lockedSkips++ }
 }
+foreach ($glob in $globFiles) {
+    Get-ChildItem $glob -ErrorAction SilentlyContinue | ForEach-Object {
+        $copy = Join-Path $snapshot $_.FullName.Substring(3)
+        try { [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($copy)) | Out-Null; [IO.File]::Copy($_.FullName, $copy, $true) } catch { $script:lockedSkips++ }
+    }
+}
+if ($roboFails.Count) { "profile-mirror: robocopy hard-failed (exit>=8): $($roboFails -join ', ')" }
 
-$files = [Collections.Generic.List[string]]@($files | Where-Object { [IO.File]::Exists($_) })
-$bytes = ($files | ForEach-Object { (Get-Item -LiteralPath $_ -Force -ErrorAction SilentlyContinue).Length } | Measure-Object -Sum).Sum
-"profile-mirror: $($files.Count) files, $([Math]::Round($bytes / 1MB, 1)) MB"
+# the snapshot IS the set to tar (full, incremental-refreshed); enumerate it for the list + byte count
+$relative = [Collections.Generic.List[string]]::new()
+$bytes = 0L
+Get-ChildItem $snapshot -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
+    $relative.Add($_.FullName.Substring($snapshot.Length + 1)); $bytes += $_.Length
+}
+"profile-mirror: $($relative.Count) files, $([Math]::Round($bytes / 1MB, 1)) MB (robocopy incremental; locked-skipped $lockedSkips)"
 if ($DryRun) { return }
 
-foreach ($stale in @(Get-ChildItem $env:TEMP -Directory -Filter 'profile-mirror-*' -ErrorAction SilentlyContinue | Where-Object { ((Get-Date) - $_.LastWriteTime).TotalMinutes -gt 60 })) {
+foreach ($stale in @(Get-ChildItem $env:TEMP -Directory -Filter 'profile-mirror-2*' -ErrorAction SilentlyContinue | Where-Object { ((Get-Date) - $_.LastWriteTime).TotalMinutes -gt 60 })) {
     Remove-Item -LiteralPath $stale.FullName -Recurse -Force -ErrorAction SilentlyContinue
 }
 
@@ -80,20 +101,14 @@ $work = Join-Path $env:TEMP "profile-mirror-$stamp"
 New-Item -ItemType Directory -Force $work | Out-Null
 $listFile = Join-Path $work 'files.txt'
 $archive = Join-Path $work "profile-mirror-$stamp.tgz"
-$snapshot = Join-Path $work 'snapshot'
-$relative = [Collections.Generic.List[string]]::new()
-$unreadable = [Collections.Generic.List[string]]::new()
-foreach ($file in $files) {
-    $rel = $file.Substring(3)
-    $copy = Join-Path $snapshot $rel
-    try { [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($copy)) | Out-Null; [IO.File]::Copy($file, $copy, $true); $relative.Add($rel) }
-    catch { $unreadable.Add($file) }
-}
-if ($unreadable.Count) { "profile-mirror: skipped $($unreadable.Count) unreadable files: $(($unreadable | Select-Object -First 3) -join ', ')" }
 [IO.File]::WriteAllLines($listFile, [string[]] $relative)
+# tar create: capture stderr to a FILE, not through `| Select -First 5` - that StopUpstream-kills tar after 5 warning lines and truncates the archive (main 11-06: the real failure is this pwsh-pipeline bug, gzip itself is RAM-light). And count entries by STREAMING (Measure-Object) - the old @(tar -tzf).Count materialized ~140k paths into an array and spiked RAM on the starved box.
+$tarErr = [IO.Path]::GetTempFileName()
 Push-Location $snapshot
-try { tar -czf $archive -T $listFile 2>&1 | Select-Object -First 5; $tarExit = $LASTEXITCODE } finally { Pop-Location }
-$entries = @(tar -tzf $archive 2>$null).Count
+try { & cmd.exe /c "cd /d `"$snapshot`" && tar -czf `"$archive`" -T `"$listFile`" 2>`"$tarErr`""; $tarExit = $LASTEXITCODE } finally { Pop-Location }
+@(Get-Content -LiteralPath $tarErr -TotalCount 5 -ErrorAction SilentlyContinue)
+Remove-Item $tarErr -Force -ErrorAction SilentlyContinue
+$entries = (tar -tzf $archive 2>$null | Measure-Object).Count
 if ($tarExit -ne 0 -or $entries -ne $relative.Count) { throw "profile-mirror: invalid archive (tar exit $tarExit, $entries of $($relative.Count) entries); it stays at $archive" }
 $hash = (Get-FileHash $archive).Hash
 
@@ -127,15 +142,27 @@ if ((Invoke-Bounded 'scp' (@('-q') + $sshOpts + @($archive, "${reached}:$RemoteD
 if ((Invoke-Bounded 'ssh' ($sshOpts + @($reached, "cmd /c move /Y `"$winDir\$arcName.part`" `"$winDir\$arcName`"")) 15000 $null) -ne 0) { throw "profile-mirror: node move of $arcName.part failed over $reached; partial not promoted" }
 $localSize = (Get-Item $archive).Length
 
+# hash-verify the landed archive FROM THE NODE before any prune (main 11-06: prune only after a hash-verified landing; never trust move-rc alone - a backup must be confirmed recoverable before older copies are removed)
+$nodeHashOut = [IO.Path]::GetTempFileName()
+$landVerified = $false
+if ((Invoke-Bounded 'ssh' ($sshOpts + @($reached, "powershell -NoProfile -Command `"(Get-FileHash '$RemoteDir/$arcName' -Algorithm SHA256).Hash`"")) 60000 $nodeHashOut) -eq 0) {
+    $nodeHash = @(Get-Content -LiteralPath $nodeHashOut -ErrorAction SilentlyContinue) | Where-Object { $_ -match '^[0-9A-Fa-f]{64}$' } | Select-Object -First 1
+    $landVerified = ($nodeHash -and $nodeHash.ToLower() -eq $hash.ToLower())
+}
+Remove-Item $nodeHashOut -Force -ErrorAction SilentlyContinue
+if (-not $landVerified) { throw "profile-mirror: landed archive $arcName hash NOT verified on $reached (local $hash); keeping it, NOT pruning older copies" }
+
 $retListOut = [IO.Path]::GetTempFileName()
 if ((Invoke-Bounded 'ssh' ($sshOpts + @($reached, "cmd /c dir /b /o-d `"$winDir\profile-mirror-*.tgz`"")) 20000 $retListOut) -eq 0) {
     $arcNames = @(Get-Content -LiteralPath $retListOut -ErrorAction SilentlyContinue) | Where-Object { $_ -match 'profile-mirror-\d{8}-\d{6}\.tgz' }
     $arcs = foreach ($n in $arcNames) { if ($n -match 'profile-mirror-(\d{8})-(\d{6})\.tgz') { [pscustomobject]@{ Name = $n.Trim(); T = [datetime]::ParseExact($matches[1] + $matches[2], 'yyyyMMddHHmmss', $null) } } }
     $arcs = @($arcs | Sort-Object T -Descending)
     $retNow = Get-Date; $keepSet = @{}
-    $arcs | Select-Object -First 12 | ForEach-Object { $keepSet[$_.Name] = $true }
-    $arcs | Group-Object { $_.T.ToString('yyyyMMdd') } | ForEach-Object { $grp = $_.Group | Sort-Object T -Descending | Select-Object -First 1; if (($retNow - $grp.T).TotalDays -le 14) { $keepSet[$grp.Name] = $true } }
-    $arcs | Group-Object { '{0}w{1:00}' -f $_.T.Year, [int]($_.T.DayOfYear / 7) } | ForEach-Object { $grp = $_.Group | Sort-Object T -Descending | Select-Object -First 1; if (($retNow - $grp.T).TotalDays -le 56) { $keepSet[$grp.Name] = $true } }
+    # retention sized to the SMALL node (~10GB free): 5 most-recent + 1/day x 5d + 1/week x 3w ~= 10 tars ~6GB, leaving headroom (was 12 + 14d + 56w ~= 30 tars, which overflows this node). MIRROR-TRANSFER-COST pre-flight 11-06.
+    $arcs | Select-Object -First 5 | ForEach-Object { $keepSet[$_.Name] = $true }
+    $arcs | Group-Object { $_.T.ToString('yyyyMMdd') } | ForEach-Object { $grp = $_.Group | Sort-Object T -Descending | Select-Object -First 1; if (($retNow - $grp.T).TotalDays -le 5) { $keepSet[$grp.Name] = $true } }
+    $arcs | Group-Object { '{0}w{1:00}' -f $_.T.Year, [int]($_.T.DayOfYear / 7) } | ForEach-Object { $grp = $_.Group | Sort-Object T -Descending | Select-Object -First 1; if (($retNow - $grp.T).TotalDays -le 21) { $keepSet[$grp.Name] = $true } }
+    if ($arcs.Count) { $keepSet[$arcs[0].Name] = $true; $keepSet[$arcs[-1].Name] = $true }  # always keep the newest (just hash-verified) AND the oldest tar - a deep copy for late-noticed damage (10-28 wipe lesson), never pruned
     $toPrune = @($arcs | Where-Object { -not $keepSet.ContainsKey($_.Name) })
     if ($toPrune.Count -gt 0) {
         $delArgs = ($toPrune | ForEach-Object { '"' + $winDir + '\' + $_.Name + '"' }) -join ' '

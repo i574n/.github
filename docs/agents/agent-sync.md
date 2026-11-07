@@ -120,7 +120,7 @@ A new thread catches up fastest in this order, before opening the backlog's
   (`%LOCALAPPDATA%\kit\supervisor\kit-*.exe`), not `src/target/debug`.
 - **Probe what a queued job sees with `job start`:** `job run` supervises
   inside your own shell and environment, while `job start` goes through the
-  shared job host, whose environment (until EOIE-JOB-ENV lands) is whoever
+  shared job host, whose environment (until KIT-JOB-ENV lands) is whoever
   started it. On 10-23 a leaked `EOIE_WINDOWS_HOME` in the host made every
   detached window gate read an empty registry, while every `job run` probe
   looked fine.
@@ -215,7 +215,7 @@ supervised job per offload, per lane, concurrently. There is no central
 dispatcher or queue to route through (the earlier `C:\home\remote-queue\pending`
 dispatcher is retired: a single serialising router is exactly the centralisation
 we removed, and a down router silently stalls every lane behind it). The durable
-next step is `EOIE-REMOTE-EXECUTOR`'s typed coordinator over iggy pub/sub, which
+next step is `KIT-REMOTE-EXECUTOR`'s typed coordinator over iggy pub/sub, which
 lets lanes subscribe to node state and quorum in real time instead of polling a
 file.
 
@@ -280,8 +280,8 @@ licenses, bundled or example skills, caches, templates, archives and trash.
 - While long recompiles and suites run, advance lighter items in parallel; one
   memory-heavy job at a time (16 GB machine); retry jobs reaped for low memory
   at lower parallelism.
-- Oracle blessing is autonomous: only from a reviewed single-flight run with
-  both cores at DISAGREE 0, reproduced row for row by the bless run.
+- Oracle accepting is autonomous: only from a reviewed single-flight run with
+  both cores at DISAGREE 0, reproduced row for row by the accept run.
 - Regression samples: one minimal sample per fixed compiler bug; no other new
   samples unless asked.
 - Comment-free app code; every dice change is mirrored in alphabet.
@@ -307,12 +307,12 @@ licenses, bundled or example skills, caches, templates, archives and trash.
 Canonical location: `i574n.github/docs/agents/agent-sync.md`. The `mold` scoop
 bucket is a clone of `i574n/mold` at `~/scoop/buckets/mold`; `fc1943s.github`
 is a workspace hub. A remote kit worker node (`DESKTOP-6E8C14G`, a LAN machine;
-"worker node" / "remote node" for short) runs as a remote kit worker (its binary is still C:\home\bin\eoie.exe with its
-own job store; the switch waits for an idle node, KIT-RENAME n60), driven
+"worker node" / "remote node" for short) runs as a remote kit worker (its binary is C:\home\bin\kit.exe, per
+remote-machines.json; its old eoie\jobs store is an alias of kit\jobs), driven
 with `i574n.github/scripts/remote.ps1 <node> run|job|status|sync|fetch` over SSH
 (Tailscale fallback); machines live in `~/.config/remote-machines.json`. Its
 bootstrap and the cross-machine job dispatch live in backlog `REMOTE-WORKER-NODE`
-and `EOIE-REMOTE-EXECUTOR`. Code moves between the review box and the worker node
+and `KIT-REMOTE-EXECUTOR`. Code moves between the review box and the worker node
 by a non-git transport (the user owns git on the review box): the uncommitted
 delta is copied over SSH and proven by per-file sha256. Point each client at this
 file; nothing loads it automatically.

@@ -455,7 +455,7 @@
 :| backends_part =
     | NBFsharp
     | NBRust
-    | NBDelphi
+    | NBPascal
     | NBZig
     | NBLean
     | NBBend
@@ -477,7 +477,7 @@
     ?= p ?|
     | NBFsharp => { key = "b_fsharp"; region = RBackends; kind = Be; title = "F#"; detail = "codegenFsharp L12592" }
     | NBRust => { key = "b_rust"; region = RBackends; kind = Be; title = "Rust"; detail = "codegenRust L13525" }
-    | NBDelphi => { key = "b_delphi"; region = RBackends; kind = Be; title = "Delphi"; detail = "L14686" }
+    | NBPascal => { key = "b_pascal"; region = RBackends; kind = Be; title = "Pascal"; detail = "L14686" }
     | NBZig => { key = "b_zig"; region = RBackends; kind = Be; title = "Zig"; detail = "L15368" }
     | NBLean => { key = "b_lean"; region = RBackends; kind = Be; title = "Lean"; detail = "L15966" }
     | NBBend => { key = "b_bend"; region = RBackends; kind = Be; title = "Bend"; detail = "L16804" }
@@ -742,7 +742,7 @@
         PCodegen NCgRefc;
         PBackends NBFsharp;
         PBackends NBRust;
-        PBackends NBDelphi;
+        PBackends NBPascal;
         PBackends NBZig;
         PBackends NBLean;
         PBackends NBBend;
@@ -807,7 +807,7 @@
         { source = PCodegen NCgAdapter; target = PCodegen NCgUtils; kind = Flow; label = "" };
         { source = PCodegen NCgUtils; target = PBackends NBFsharp; kind = Flow; label = "" };
         { source = PCodegen NCgUtils; target = PBackends NBRust; kind = Flow; label = "" };
-        { source = PCodegen NCgUtils; target = PBackends NBDelphi; kind = Flow; label = "" };
+        { source = PCodegen NCgUtils; target = PBackends NBPascal; kind = Flow; label = "" };
         { source = PCodegen NCgUtils; target = PBackends NBZig; kind = Flow; label = "" };
         { source = PCodegen NCgUtils; target = PBackends NBLean; kind = Flow; label = "" };
         { source = PCodegen NCgUtils; target = PBackends NBBend; kind = Flow; label = "" };

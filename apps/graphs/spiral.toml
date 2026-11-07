@@ -1,0 +1,12 @@
+edition = '3'
+packageDir = '../../../spiral/lib'
+packages = ['|core-', 'spiral-']
+modules = '''
+host
+graph
+emit
+compiler_model
+compiler
+agile
+main
+'''

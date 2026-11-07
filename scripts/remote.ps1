@@ -29,7 +29,7 @@ if ($Machine -eq 'codespaces' -and $Verb -eq 'refresh') {
         $key = "cs-$(($codespace.name -split '-')[0])"
         $machines[$key] = [ordered]@{
             kind = 'linux'; proxied = $true; sshAlias = "cs.$($codespace.name).main"; shell = '/home/codespace/pwsh/pwsh'
-            gitRoot = '/tmp/remote/git'; mirrorBase = '/tmp/remote'; stage = '/tmp/remote/stage'; eoie = '/tmp/remote/bin/kit'
+            gitRoot = '/tmp/remote/git'; mirrorBase = '/tmp/remote'; stage = '/tmp/remote/stage'; kit = '/tmp/remote/bin/kit'
         }
         $key
     }
@@ -39,6 +39,7 @@ if ($Machine -eq 'codespaces' -and $Verb -eq 'refresh') {
 }
 if (-not $machines.ContainsKey($Machine)) { throw "remote.ps1: no machine '$Machine' in $Config (known: $($machines.Keys -join ', '))" }
 $target = $machines[$Machine]
+$kitBinary = $target.kit
 $addressCache = Join-Path $HOME ".ssh/$($target.sshAlias)-last-ip.txt"
 $remoteSeparator = if ($target.kind -eq 'linux') { '/' } else { '\' }
 
@@ -50,6 +51,19 @@ $script:remoteExit = 0
 function Test-TcpPort([string] $address, [int] $port = 22) {
     $client = [Net.Sockets.TcpClient]::new()
     try { $client.ConnectAsync($address, $port).Wait(4000) -and $client.Connected } catch { $false } finally { $client.Dispose() }
+}
+
+$routeExit = @{ NoRoute = 251; NoBanner = 252; AuthRefused = 253 }
+$routeDetail = @{
+    NoRoute     = 'port 22 unreachable: a network problem or the host or its sshd is down'
+    NoBanner    = 'port 22 open but no ssh banner: the remote is starved, cap its load'
+    AuthRefused = 'sshd answered and refused the login or host key: a user, key or known_hosts problem; the host is reachable'
+}
+
+function Get-RouteOutcome([string] $said) {
+    if ($said -match 'banner exchange|kex_exchange_identification|Connection closed by remote host|Connection reset') { 'NoBanner' }
+    elseif ($said -match 'Permission denied|Host key verification failed|REMOTE HOST IDENTIFICATION HAS CHANGED|Too many authentication failures') { 'AuthRefused' }
+    else { 'NoBanner' }
 }
 
 function Resolve-MachineAddress {
@@ -69,15 +83,22 @@ function Resolve-MachineAddress {
     $tailscale = 'C:\Program Files\Tailscale\tailscale.exe'
     if ((Test-Path $tailscale) -and $target.tailscaleName) { & $tailscale ip -4 $target.tailscaleName 2>$null | Select-Object -First 1 | ForEach-Object { $candidates.Add($_.Trim()) } }
     $tried = [Collections.Generic.List[string]]::new()
+    $outcomes = [Collections.Generic.List[string]]::new()
     foreach ($address in @($candidates | Where-Object { $_ } | Select-Object -Unique)) {
         $tcp = Test-TcpPort $address
+        $outcome = 'NoRoute'
         if ($tcp) {
-            ssh -o "HostName=$address" -o ConnectTimeout=8 -o BatchMode=yes -o ServerAliveInterval=5 -o ServerAliveCountMax=2 $target.sshAlias "exit 0" 2>$null | Out-Null
+            $said = (ssh -o "HostName=$address" -o ConnectTimeout=8 -o BatchMode=yes -o ServerAliveInterval=5 -o ServerAliveCountMax=2 $target.sshAlias "exit 0" 2>&1 | Out-String)
             if ($LASTEXITCODE -eq 0) { $script:machineAddress = $address; Set-Content $addressCache $address; return $address }
+            $outcome = Get-RouteOutcome $said
         }
-        $tried.Add("$address ($(if ($tcp) { 'port 22 open, login refused: a user or key problem' } else { 'port 22 unreachable: a network problem' }))")
+        $outcomes.Add($outcome)
+        $tried.Add("$address $outcome ($($routeDetail[$outcome]))")
     }
-    throw "remote.ps1: no route to $Machine works: $($tried -join '; '). Run i574n.github/scripts/node-reach.ps1 for a per-route, per-key report."
+    $worst = @('AuthRefused', 'NoBanner', 'NoRoute') | Where-Object { $outcomes -contains $_ } | Select-Object -First 1
+    if (-not $worst) { $worst = 'NoRoute' }
+    [Console]::Error.WriteLine("remote.ps1 route-outcome=$worst machine=$Machine tried: $($tried -join '; '). Run i574n.github/scripts/node-reach.ps1 for a per-route, per-key report.")
+    exit $routeExit[$worst]
 }
 
 function ConvertTo-PwshLiteral([string] $text) { "'" + $text.Replace("'", "''") + "'" }
@@ -142,7 +163,7 @@ switch ($Verb) {
         $body = if ($Script) { if ($Rest.Count) { throw 'remote.ps1: run takes either -Script <local file> or a command, not both' }; [IO.File]::ReadAllText((Resolve-Path -LiteralPath $Script).Path) } else { $Rest -join ' ' }
         Invoke-Remote $body; exit $script:remoteExit
     }
-    'job' { if ($RequireCore) { Assert-NodeCore $RequireCore $CoreMode }; $slots = if ($target.slots) { "`$env:KIT_JOB_SLOTS = '$([int]$target.slots)'; " } else { '' }; Invoke-Remote ($slots + "& $(ConvertTo-PwshLiteral $target.eoie) job " + (($Rest | ForEach-Object { ConvertTo-PwshLiteral $_ }) -join ' ')); exit $script:remoteExit }
+    'job' { if ($RequireCore) { Assert-NodeCore $RequireCore $CoreMode }; $slots = if ($target.slots) { "`$env:KIT_JOB_SLOTS = '$([int]$target.slots)'; " } else { '' }; Invoke-Remote ($slots + "& $(ConvertTo-PwshLiteral $kitBinary) job " + (($Rest | ForEach-Object { ConvertTo-PwshLiteral $_ }) -join ' ')); exit $script:remoteExit }
     'status' {
         Invoke-Remote (@(
             @'
@@ -150,7 +171,7 @@ if ($IsWindows) { $os = Get-CimInstance Win32_OperatingSystem; $cpu = '{0}%' -f 
 else { $a = (Get-Content /proc/stat -TotalCount 1).Split(' ', [StringSplitOptions]::RemoveEmptyEntries)[1..8] | ForEach-Object { [double]$_ }; Start-Sleep -Milliseconds 1000; $b = (Get-Content /proc/stat -TotalCount 1).Split(' ', [StringSplitOptions]::RemoveEmptyEntries)[1..8] | ForEach-Object { [double]$_ }; $total = ($b | Measure-Object -Sum).Sum - ($a | Measure-Object -Sum).Sum; $idle = ($b[3] + $b[4]) - ($a[3] + $a[4]); $cpu = '{0}%' -f [math]::Round(100 * (1 - $idle / [math]::Max($total, 1))); $freeGb = [double](Select-String -Path /proc/meminfo -Pattern '^MemAvailable:\s+(\d+)').Matches[0].Groups[1].Value / 1MB }
 '{0} cpu {1} free-mem {2:N1} GB free-disk {3:N1} GB' -f [Environment]::MachineName, $cpu, $freeGb, ([IO.DriveInfo]::new([IO.Path]::GetPathRoot((Get-Location).Path)).AvailableFreeSpace / 1GB)
 '@
-            "& $(ConvertTo-PwshLiteral $target.eoie) job list 12 2>&1 | Where-Object { `$_ -match 'state=(running|queued)' }"
+            "& $(ConvertTo-PwshLiteral $kitBinary) job list 12 2>&1 | Where-Object { `$_ -match 'state=(running|queued)' }"
             "foreach (`$repo in Get-ChildItem $(ConvertTo-PwshLiteral $target.gitRoot) -Directory) { if (Test-Path (Join-Path `$repo.FullName '.git')) { '{0,-14} {1}' -f `$repo.Name, (git -C `$repo.FullName rev-parse --short=8 HEAD) } }"
             "`$runner = [Environment]::GetEnvironmentVariable('SPIRAL_EXE', 'User') ?? `$env:SPIRAL_EXE; if (`$runner -and (Test-Path `$runner)) { 'node runner   {0} {1:yyyy-MM-dd HH:mm} {2}' -f (Get-FileHash `$runner).Hash.Substring(0, 16), (Get-Item `$runner).LastWriteTime, `$runner } else { 'node runner   (SPIRAL_EXE unset or missing)' }"
             "`$core = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'spiral-bin' 'bin' 'single-flight' 'SpiralCompiler' 'Release' 'net11.0' 'SpiralCompilerCore.dll'; if (Test-Path `$core) { 'node compiler {0} {1:yyyy-MM-dd HH:mm}' -f (Get-FileHash `$core).Hash.Substring(0, 16), (Get-Item `$core).LastWriteTime } else { 'node compiler (missing)' }"
@@ -233,7 +254,7 @@ function Get-CoreDigest([string] $core) {
         if ($Publish) { $Mirror = 'spiral-' + $head.Substring(0, 8) + '-' + $digest.Substring(0, [Math]::Min(8, $digest.Length)); $remoteRepo = ConvertTo-PwshLiteral (Join-RemotePath $mirrorRoot $Mirror $repo) }
         "sync $repo -> ${Machine}: head $($head.Substring(0, 8)), $($changed.Count) changed, $($deleted.Count) deleted, digest $digest"
         if (-not $Force -and -not $Mirror) {
-            Invoke-Remote "if (& $(ConvertTo-PwshLiteral $target.eoie) job list 50 2>&1 | Where-Object { `$_ -match 'state=(running|queued)' }) { exit 4 }"
+            Invoke-Remote "if (& $(ConvertTo-PwshLiteral $kitBinary) job list 50 2>&1 | Where-Object { `$_ -match 'state=(running|queued)' }) { exit 4 }"
             if ($script:remoteExit -eq 4) { 'remote.ps1: jobs are running or queued there; pass -Force, or use -Mirror <job> for an isolated worktree that is safe under running jobs'; exit 4 }
         }
         Invoke-Remote "New-Item -ItemType Directory -Force $stage | Out-Null; if (-not (Test-Path $remoteSource)) { git init -q $remoteSource }; git -C $remoteSource cat-file -e '$head^{commit}' 2>`$null; if (`$LASTEXITCODE) { git -C $remoteSource fetch -q origin 2>`$null; git -C $remoteSource cat-file -e '$head^{commit}' 2>`$null }; exit `$LASTEXITCODE"
