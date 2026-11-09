@@ -1,0 +1,6 @@
+exclude = [".git/**", "**/.git/**", "**/manifest.toml", "**/target/**", "deps/**", "**/node_modules/**"]
+
+[formatting]
+column_width = 120
+indent_string = "    "
+array_auto_collapse = false

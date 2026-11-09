@@ -134,8 +134,11 @@ foreach ($file in $Push) {
     if ("$have" -ne $want) { throw "node-proof / pushed $leaf hash $have, expected $want" }
     "node-proof / pushed $leaf to $stage ($want)"
 }
-foreach ($repo in $Repos) {
-    $sync = @(pwsh -NoProfile -File $remote node sync $repo -Mirror $MirrorName 2>&1 | ForEach-Object { "$_" })
+$withSpiral = $Repos -contains 'spiral'
+foreach ($repo in @($Repos | Sort-Object { $_ -ne 'spiral' })) {
+    $link = ($withSpiral -and $repo -ne 'spiral') ? @('-SpiralMirror', $MirrorName) : @()
+    $sync = @(pwsh -NoProfile -File $remote node sync $repo -Mirror $MirrorName @link 2>&1 | ForEach-Object { "$_" })
+    if ($link -and -not ($sync -match '^MIRROR-SPIRAL-LINKED ')) { throw "node-proof / $repo in $MirrorName is not linked to its spiral mirror: $($sync | Select-Object -Last 1)" }
     $ok = @($sync -match "^REMOTE-SYNC-OK $repo ")
     if ($ok.Count -ne 1) { throw "node-proof / sync of $repo to $MirrorName did not print REMOTE-SYNC-OK: $($sync | Select-Object -Last 1)" }
     $ok[0]
@@ -143,7 +146,7 @@ foreach ($repo in $Repos) {
 if ($LandRepos) { Write-SyncManifest $Label $LandRepos }
 $coreCheck = $RequireCore ? @('-RequireCore', $RequireCore) : @()
 $start = @(pwsh -NoProfile -File $remote $JobMachine job @coreCheck start $Label $TimeoutMs pwsh -NoProfile -File "$stage\run.ps1" 2>&1 | ForEach-Object { "$_" })
-$started = @($start -match '^kit job start ok ')
+$started = @($start -match '^(kit|rig) job start ok ')
 if ($started.Count -eq 1) { $started[0] }
 else {
     $start

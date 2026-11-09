@@ -1,4 +1,4 @@
-param([string] $Owner = 'main', [switch] $Stop)
+param([string] $Owner = '(org|org2|org3|i574n|main)', [switch] $Stop)
 $ErrorActionPreference = 'Stop'
 $jobsRoot = Join-Path $env:LOCALAPPDATA 'kit\jobs'
 $kit = (Join-Path $PSScriptRoot '..\..\kit\kit.exe')

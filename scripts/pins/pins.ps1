@@ -14,7 +14,7 @@ foreach ($entry in $entries) {
     if (!(BuildSpiral "$entry.spi" "dist/$entry.rs" "i574n.github/$entry")) {
         throw "RUST-FAILED i574n.github/$entry / compile"
     }
-    { rustc +nightly-2026-10-18 -O "dist/$entry.rs" -o "dist/$entry$(_exe)" } | Invoke-Block
+    { rustc +nightly-2026-11-05 -O "dist/$entry.rs" -o "dist/$entry$(_exe)" } | Invoke-Block
 }
 
 $workflows = @($orgRepos | ForEach-Object { Get-ChildItem (Join-Path ../../.. $_ .github/workflows) -Filter *.yml -ErrorAction Ignore } | ForEach-Object FullName)

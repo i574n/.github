@@ -1,0 +1,9 @@
+///- --no-respell
+union task_wait =
+    | Waits :: string * string * string -> task_wait
+inl wait_of_kit_next_name () = Waits ("KIT-NEXT-NAME", "when", "pack62 live on box and node")
+inl wait_of_kit_target_size_rules () = Waits ("KIT-TARGET-SIZE-RULES", "train", "TRAIN41")
+inl wait_of_rig_units_u4 () = Waits ("RIG-UNITS-U4", "lane", "team:compiler")
+inl wait_of_rig_units_check () = Waits ("RIG-UNITS-CHECK", "train", "TRAIN41")
+inl wait_of_kit_next_name_r3 () = Waits ("KIT-NEXT-NAME-R3", "train", "TRAIN41")
+inl wait_of_agile_waits_resolve () = Waits ("AGILE-WAITS-RESOLVE", "train", "TRAIN42")

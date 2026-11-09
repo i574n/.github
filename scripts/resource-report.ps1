@@ -5,11 +5,17 @@ param(
     [string] $NodeHost,
     [string] $NodeKit,
     [int] $SampleSec = 5,
-    [string[]] $Teams = @('main', 'x', 'kit', 'fiscal', 'compiler', 'tibia', 'heal', 'healing')
+    [string[]] $Teams = @()
 )
 $ErrorActionPreference = 'Stop'
 $nodeEnv = Join-Path $PSScriptRoot 'node-env.ps1'
 if (Test-Path $nodeEnv) { . $nodeEnv }
+# $Teams DERIVES from the live CC session registry (LANE-RENAME-RECONCILE) when not passed, so a rename never leaves
+# it stale; fail-open to a static set if the registry/helper is unreadable.
+if (-not $Teams -or -not $Teams.Count) {
+    try { $Teams = @(Get-ActiveLanes) } catch { $Teams = @() }
+    if (-not $Teams.Count) { $Teams = @('org', 'rig', 'fiscal', 'compiler', 'tibia', 'microblog') }
+}
 if (-not $NodeHost) { $NodeHost = $NodeRoutes[0] }
 if (-not $NodeKit) { $NodeKit = $NodeKitPath }
 
@@ -91,7 +97,7 @@ $all | Where-Object { -not $inJob[[int]$_.ProcessId] -and $_.WorkingSetSize -ge 
 "=== Claude session tool shells by lane (live processes under each session's claude.exe; --resume names the lane, i574n is main)"
 $sessionOf = @{}
 foreach ($c in $all | Where-Object { $_.Name -eq 'claude.exe' -and "$($_.CommandLine)" -match 'claude-code' }) {
-    $sessionOf[[int]$c.ProcessId] = if ("$($c.CommandLine)" -match '--resume\s+(\S+)') { if ($Matches[1] -eq 'i574n') { 'main' } else { $Matches[1] } } else { '(no --resume)' }
+    $sessionOf[[int]$c.ProcessId] = if ("$($c.CommandLine)" -match '--resume\s+(\S+)') { $Matches[1] } else { '(no --resume)' }
 }
 $all | Where-Object { $_.Name -ne 'claude.exe' } | ForEach-Object {
     $seen = @{}; $cur = [int]$_.ParentProcessId; $lane = $null

@@ -1,3 +1,4 @@
 dist
+target/
 
 scripts/node-env.ps1

@@ -14,7 +14,7 @@
 
 := version_of (t : tool) : string =
     ?= t ?|
-    | RustMain => "nightly-2026-10-18"
+    | RustMain => "nightly-2026-11-05"
     | DotnetWorkflow => "9.0.202"
     | Otp => "29"
     | Elixir => "1.20"

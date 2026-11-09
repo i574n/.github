@@ -3,7 +3,13 @@ param(
     [string] $Store = (Join-Path $env:LOCALAPPDATA 'kit\backups\unstaged'),
     [int] $KeepDays = 14,
     [int] $MaxFileMB = 20,
-    [switch] $Verify
+    [int] $KeepAllDays = 3,
+    [int] $DailyDays = 21,
+    [int] $WeeklyDays = 90,
+    [int] $FloorCount = 12,
+    [switch] $Verify,
+    [switch] $Prune,
+    [switch] $DryRun
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
@@ -60,6 +66,40 @@ if ($Verify) {
         } finally { $zip.Dispose() }
     }
 }
-$expired = @(Get-ChildItem $Store -Directory | Where-Object { $_.Name -match '^\d{8}-\d{6}$' -and $_.LastWriteTime -lt (Get-Date).AddDays(-$KeepDays) })
+# Retention (KIT-UNSTAGED-RETENTION): this store is the wipe-exposure safety net (the 10-28 wipe is why it exists),
+# so it thins by AGE TIER rather than a flat cutoff - recent snapshots stay dense, older ones thin to daily then
+# weekly - and it ALWAYS keeps the newest, the oldest, and a floor of the most-recent runs as a backstop. Deletion
+# runs ONLY with -Prune; the scheduled task does not pass it, so default behavior stays "never deletes" until the
+# keep-set is proven. -DryRun computes and reports the plan without deleting.
+$allRuns = @(Get-ChildItem $Store -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\d{8}-\d{6}$' } | Sort-Object Name)
+$now = Get-Date
+$cal = [Globalization.CultureInfo]::InvariantCulture.Calendar
+$keep = [Collections.Generic.HashSet[string]]::new()
+$seenDay = @{}; $seenWeek = @{}
+foreach ($r in $allRuns) {
+    $age = ($now - $r.LastWriteTime).TotalDays
+    if ($age -le $KeepAllDays) { [void]$keep.Add($r.Name); continue }
+    if ($age -le $DailyDays) {
+        $k = $r.LastWriteTime.ToString('yyyyMMdd')
+        if (-not $seenDay.ContainsKey($k)) { $seenDay[$k] = $true; [void]$keep.Add($r.Name) }
+        continue
+    }
+    if ($age -le $WeeklyDays) {
+        $k = '{0}-{1}' -f $r.LastWriteTime.Year, $cal.GetWeekOfYear($r.LastWriteTime, 'FirstFourDayWeek', 'Monday')
+        if (-not $seenWeek.ContainsKey($k)) { $seenWeek[$k] = $true; [void]$keep.Add($r.Name) }
+        continue
+    }
+}
+if ($allRuns.Count) { [void]$keep.Add($allRuns[0].Name); [void]$keep.Add($allRuns[-1].Name) }
+foreach ($r in @($allRuns | Select-Object -Last $FloorCount)) { [void]$keep.Add($r.Name) }
+$prunable = @($allRuns | Where-Object { -not $keep.Contains($_.Name) })
+$prunedMB = [math]::Round(($prunable | ForEach-Object { (Get-ChildItem $_.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum } | Measure-Object -Sum).Sum / 1MB, 1)
+if ($Prune -and -not $DryRun) {
+    foreach ($r in $prunable) {
+        try { Remove-Item -LiteralPath $r.FullName -Recurse -Force -ErrorAction Stop }
+        catch { [Console]::Error.WriteLine("retention: could not prune $($r.Name): $_") }
+    }
+}
 $rows | Format-Table -AutoSize | Out-String -Width 160
-"unstaged backup $stamp -> $run : $($rows.Count) repos with a layer, $([math]::Round(($rows | Measure-Object MB -Sum).Sum, 1)) MB; runs older than $KeepDays days (kept, listed for the archive rule): $($expired.Count)"
+$verb = if ($Prune -and -not $DryRun) { 'pruned' } elseif ($DryRun -or $Prune) { 'WOULD prune (dry-run)' } else { 'prunable (retention off; pass -Prune to apply)' }
+"unstaged backup $stamp -> $run : $($rows.Count) repos with a layer, $([math]::Round(($rows | Measure-Object MB -Sum).Sum, 1)) MB; store has $($allRuns.Count) runs, keep $($keep.Count), $verb $($prunable.Count) (${prunedMB}MB) [tiers: all<=${KeepAllDays}d, daily<=${DailyDays}d, weekly<=${WeeklyDays}d, floor $FloorCount + newest/oldest]"

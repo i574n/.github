@@ -2,12 +2,16 @@
 param(
     [int] $BoxSaturatedPct = 85,
     [int] $NodeIdlePct = 35,
+    [int] $NodeProbeTimeoutMs = 40000,
+    [int] $WorkerFullPct = 85,
+    [int] $WorkerMemFloorMb = 400,
+    [int] $NodeDiskFloorGb = 15,
+    [int] $OffloadFreeMb = 3000,
     [switch] $NoteOnWaste
 )
 $ErrorActionPreference = 'Stop'
 $nodeEnv = Join-Path $PSScriptRoot 'node-env.ps1'
 if (Test-Path $nodeEnv) { . $nodeEnv }
-$MirrorNode = if ($NodeRoutes) { $NodeRoutes[0] } else { $null }
 function Invoke-Bounded([string] $exe, [string[]] $a, [int] $timeoutMs, [string] $outFile) {
     $errf = [IO.Path]::GetTempFileName()
     $p = if ($outFile) { Start-Process $exe -ArgumentList $a -NoNewWindow -PassThru -RedirectStandardOutput $outFile -RedirectStandardError $errf }
@@ -24,7 +28,8 @@ function Invoke-Bounded([string] $exe, [string[]] $a, [int] $timeoutMs, [string]
 }
 $sshOpts = @('-o', 'ConnectTimeout=12', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=4')
 $box = [int]((Get-CimInstance Win32_Processor | Measure-Object LoadPercentage -Average).Average)
-# try each route until one answers (remote.ps1 pattern): the 'laptop' hostname resolution flakes; laptop-ts/laptop-ip fall back
+$boxOs = Get-CimInstance Win32_OperatingSystem
+$boxCommitPct = [int](100 * (1 - $boxOs.FreeVirtualMemory / $boxOs.TotalVirtualMemorySize))
 function Invoke-NodeRoute([string[]] $routes, [string] $remoteCmd, [int] $timeoutMs) {
     foreach ($r in $routes) {
         $o = [IO.Path]::GetTempFileName()
@@ -36,80 +41,88 @@ function Invoke-NodeRoute([string[]] $routes, [string] $remoteCmd, [int] $timeou
     }
     return @{ ok = $false; route = 'none'; lines = @(); ms = 0 }
 }
-# mirror node: CPU% and C: free GB in ONE probe over the route-fallback chain
-$mdEnc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes("[int]((Get-CimInstance Win32_Processor|Measure-Object LoadPercentage -Average).Average); [int]((Get-CimInstance Win32_LogicalDisk|Where-Object DeviceID -eq 'C:').FreeSpace/1GB); [int]((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1024)"))
-# 40s (was 15s): the node probe is ssh + pwsh + 3 CIM queries; when the lap twin is at 100% CPU (common on this fleet) that exceeds 15s and ALL routes "fail", producing a FALSE UNKNOWN/node-down alarm even though the node is up (critical-mirror lands fine). 40s tolerates a loaded lap; Invoke-NodeRoute still returns on the first route that answers, so a healthy node stays fast.
-$mdR = if ($NodeRoutes) { Invoke-NodeRoute $NodeRoutes "powershell -NoProfile -EncodedCommand $mdEnc" 40000 } else { @{ ok = $false; route = 'none'; lines = @(); ms = 0 } }
-$digits = @($mdR.lines | Where-Object { $_ -match '^\d+$' })
-$mirrorPct = if ($mdR.ok -and $digits.Count -ge 1) { [int]$digits[0] } else { -1 }
-$nodeFreeGb = if ($mdR.ok -and $digits.Count -ge 2) { [int]$digits[1] } else { -1 }
-$lapFreeMb = if ($mdR.ok -and $digits.Count -ge 3) { [int]$digits[2] } else { -1 }
-$mirrorRoute = $mdR.route; $mirrorMs = $mdR.ms
-# compute node (vultr): loadavg / nproc, timed (the -1 cause is likely the 15s bound under box load, not a route)
-$computeOut = [IO.Path]::GetTempFileName()
-$computeSw = [Diagnostics.Stopwatch]::StartNew()
-$computeRc = if ($ComputeNode) { Invoke-Bounded 'ssh' ($sshOpts + @($ComputeNode, "cut -d' ' -f1 /proc/loadavg; nproc; df --output=pcent /tmp 2>/dev/null | tail -1 | tr -dc 0-9")) 40000 $computeOut } else { 1 }
-$computeSw.Stop()
-$vr = if ($computeRc -eq 0) { @(Get-Content -LiteralPath $computeOut -ErrorAction SilentlyContinue | Where-Object { $_ }) } else { @() }
-$computePct = if ($vr.Count -ge 2) { [int]([double]$vr[0] / [int]$vr[1] * 100) } else { -1 }
-# vultr /tmp is a 1.7GB tmpfs (RAM-backed); when it fills, Cells/Rust gates there fail with a MISLEADING "zig exit 134 / DWARF NoSpaceLeft" that looks like a compiler code-red but is disk (main 11-06). Alarm early so it is diagnosed as /tmp, not chased as a compiler bug.
-$vultrTmpPct = if ($vr.Count -ge 3) { [int]$vr[2] } else { -1 }
-$computeMs = [int]$computeSw.ElapsedMilliseconds
-Remove-Item $computeOut -Force -ErrorAction SilentlyContinue
-$diskLow = ($nodeFreeGb -ge 0 -and $nodeFreeGb -lt 15)
-$idle = @()
-if ($mirrorPct -ge 0 -and $mirrorPct -le $NodeIdlePct) { $idle += "mirror(${mirrorPct}%)" }
-if ($computePct -ge 0 -and $computePct -le $NodeIdlePct) { $idle += "compute(${computePct}%)" }
-# WASTE = USABLE offload only: the lap twin (same OS) idle AND >=3GB free. vultr compute idle is NOT offloadable for box load - it is Linux/3.4GB and cannot host the heavy Windows classes (fiscal 3-5GB peak, trains) that saturate the box (measured, DELEG-WIFI-NODE-HEAVY n5), so counting it was a WASTE false-positive
+$nodeEnc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes("[int]((Get-CimInstance Win32_Processor|Measure-Object LoadPercentage -Average).Average); [int]((Get-CimInstance Win32_LogicalDisk|Where-Object DeviceID -eq 'C:').FreeSpace/1GB); [int]((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1024); `$o=Get-CimInstance Win32_OperatingSystem; [int](100*(1-`$o.FreeVirtualMemory/`$o.TotalVirtualMemorySize)); `$k=0; `$p='C:\ProgramData\erl-guard\killed.log'; if(Test-Path `$p){`$c=(Get-Date).AddMinutes(-30); `$k=@(Get-Content `$p -EA SilentlyContinue|%{`$d=[datetime]::MinValue; if([datetime]::TryParse((`$_ -split ' ')[0],[ref]`$d) -and `$d -gt `$c){1}}).Count}; `$k"))
+$nodeR = if ($NodeRoutes) { Invoke-NodeRoute $NodeRoutes "powershell -NoProfile -EncodedCommand $nodeEnc" $NodeProbeTimeoutMs } else { @{ ok = $false; route = 'none'; lines = @(); ms = 0 } }
+$digits = @($nodeR.lines | Where-Object { $_ -match '^\d+$' })
+$nodePct = if ($nodeR.ok -and $digits.Count -ge 1) { [int]$digits[0] } else { -1 }
+$nodeFreeGb = if ($nodeR.ok -and $digits.Count -ge 2) { [int]$digits[1] } else { -1 }
+$nodeFreeMb = if ($nodeR.ok -and $digits.Count -ge 3) { [int]$digits[2] } else { -1 }
+$nodeCommitPct = if ($nodeR.ok -and $digits.Count -ge 4) { [int]$digits[3] } else { -1 }
+$nodeErlKill = if ($nodeR.ok -and $digits.Count -ge 5) { [int]$digits[4] } else { 0 }
+$nodeRoute = $nodeR.route; $nodeMs = $nodeR.ms
+$workerOut = [IO.Path]::GetTempFileName()
+$workerSw = [Diagnostics.Stopwatch]::StartNew()
+$workerRc = if ($ComputeNode) { Invoke-Bounded 'ssh' ($sshOpts + @($ComputeNode, "cut -d' ' -f1 /proc/loadavg; nproc; df --output=pcent /tmp 2>/dev/null | tail -1 | tr -dc 0-9; echo; df --output=pcent / 2>/dev/null | tail -1 | tr -dc 0-9; echo; df -BG --output=avail / 2>/dev/null | tail -1 | tr -dc 0-9; echo; timeout 10 journalctl -k --since '30 min ago' 2>/dev/null | grep -i 'killed process' | grep -vic cgroup || true; awk '/MemAvailable/{print int(`$2/1024)}' /proc/meminfo")) $NodeProbeTimeoutMs $workerOut } else { 1 }
+$workerSw.Stop()
+$wr = if ($workerRc -eq 0) { @(Get-Content -LiteralPath $workerOut -ErrorAction SilentlyContinue | Where-Object { $_ }) } else { @() }
+$workerPct = if ($wr.Count -ge 2) { [int]([double]$wr[0] / [int]$wr[1] * 100) } else { -1 }
+$workerTmpPct = if ($wr.Count -ge 3) { [int]$wr[2] } else { -1 }
+$workerDiskPct = if ($wr.Count -ge 4) { [int]$wr[3] } else { -1 }
+$workerFreeGb = if ($wr.Count -ge 5) { [int]$wr[4] } else { -1 }
+$workerOom = if ($wr.Count -ge 6) { [int]$wr[5] } else { -1 }
+$workerMemMb = if ($wr.Count -ge 7) { [int]$wr[6] } else { -1 }
+$workerMs = [int]$workerSw.ElapsedMilliseconds
+Remove-Item $workerOut -Force -ErrorAction SilentlyContinue
+$diskLow = ($nodeFreeGb -ge 0 -and $nodeFreeGb -lt $NodeDiskFloorGb)
 $idleUsable = @()
-if ($mirrorPct -ge 0 -and $mirrorPct -le $NodeIdlePct -and $lapFreeMb -ge 3000) { $idleUsable += "lap(cpu ${mirrorPct}%, free ${lapFreeMb}MB)" }
+if ($nodePct -ge 0 -and $nodePct -le $NodeIdlePct -and $nodeFreeMb -ge $OffloadFreeMb) { $idleUsable += "node(cpu ${nodePct}%, free ${nodeFreeMb}MB)" }
 $waste = ($box -ge $BoxSaturatedPct -and $idleUsable.Count -gt 0)
 $log = Join-Path $env:LOCALAPPDATA 'kit\schedules\node-utilization-monitor.last.log'
 New-Item -ItemType Directory -Force (Split-Path $log) | Out-Null
 $prior = (Get-Content -LiteralPath $log -Tail 1 -ErrorAction SilentlyContinue)
-# DISK-ALARM-REARM: do not dedupe a WORSENING disk - re-alarm DISK-LOW if the node dropped >=3GB below the last-alarmed level
 $priorDiskGb = if ("$prior" -match 'node C: (\d+)GB') { [int]$Matches[1] } else { 9999 }
 $diskWorsened = ($diskLow -and $nodeFreeGb -ge 0 -and ($priorDiskGb - $nodeFreeGb) -ge 3)
-$priorReal = ("$prior" -match 'WASTE|DISK-LOW|VULTR-TMP') -and -not $diskWorsened
+$oomRecent = ($workerOom -ge 1)
+$priorReal = ("$prior" -match 'WASTE|DISK-LOW|WORKER-TMP|WORKER-DISK|COMMIT-HIGH|WORKER-OOM|NODE-ERLKILL|WORKER-MEM') -and -not $diskWorsened
 $priorUnknown = "$prior" -match 'UNKNOWN'
 $priorDelivered = "$prior" -match 'DELIVERED'
 $failed = @()
-if ($mirrorPct -lt 0) { $failed += 'mirror' }
-if ($computePct -lt 0) { $failed += 'compute' }
+if ($nodePct -lt 0) { $failed += 'node' }
+if ($workerPct -lt 0) { $failed += 'worker' }
 if ($nodeFreeGb -lt 0) { $failed += 'node-disk' }
 $alarms = @()
-if ($waste) { $alarms += "WASTE: box ${box}% saturated while a compatible Windows host is idle: $($idleUsable -join ', ') - offloadable capacity sitting unused (vultr compute(${computePct}%) excluded: Linux/3.4GB cannot host heavy Windows jobs)" }
-if ($diskLow) { $alarms += "DISK-LOW: mirror node C: ${nodeFreeGb}GB free (<15GB floor) - mirror scp/retention + node sims at risk" }
-if ($vultrTmpPct -ge 85) { $alarms += "VULTR-TMP: compute node /tmp ${vultrTmpPct}% full (1.7GB tmpfs) - Cells/Rust gates there will fail as 'zig exit 134 / DWARF NoSpaceLeft' (reads like a compiler code-red, is actually disk); prune stale >48h from /tmp" }
+if ($waste) { $alarms += "WASTE: box ${box}% saturated while a compatible Windows host is idle: $($idleUsable -join ', ') - offloadable capacity sitting unused (the Linux worker at ${workerPct}% is excluded: it cannot host the heavy Windows jobs)" }
+if ($diskLow) { $alarms += "DISK-LOW: node C: ${nodeFreeGb}GB free (<${NodeDiskFloorGb}GB floor) - mirror copies, retention and node sims at risk" }
+if ($workerTmpPct -ge $WorkerFullPct) { $alarms += "WORKER-TMP: worker /tmp ${workerTmpPct}% full - Cells/Rust gates there fail as 'zig exit 134 / DWARF NoSpaceLeft', which reads like a compiler bug but is disk; prune stale >48h from /tmp" }
+if ($workerDiskPct -ge $WorkerFullPct) { $alarms += "WORKER-DISK: worker root ${workerDiskPct}% full (${workerFreeGb}GB free) - a full disk breaks gates silently (zig NoSpaceLeft); prune /tmp orphans, stale stages and old compiler candidates; owner-owned data dirs are never auto-pruned" }
+if ($boxCommitPct -ge 70 -or $nodeCommitPct -ge 70) { $alarms += "COMMIT-HIGH: committed memory box ${boxCommitPct}% node ${nodeCommitPct}% (>=70% of the commit limit incl pagefile) - a runaway can thrash the pagefile while free physical memory still looks fine; check the top committers before placing heavy work" }
+if ($oomRecent) { $alarms += "WORKER-OOM: the worker's host OOM-killer fired $workerOom time(s) in the last 30 min (silent 137/143 exits); a job exceeded host RAM, so cap heavy jobs with systemd-run --scope. Container cgroup OOMs are excluded: those go to the pod owner" }
+if ($workerMemMb -ge 0 -and $workerMemMb -lt $WorkerMemFloorMb) { $alarms += "WORKER-MEM: worker MemAvailable ${workerMemMb}MB < ${WorkerMemFloorMb}MB - near-OOM; a heavy job is over-committing (early warning before WORKER-OOM)" }
+if ($nodeErlKill -ge 1) { $alarms += "NODE-ERLKILL: the node's erl-mem-guard killed $nodeErlKill erl/beam process(es) >12GB in the last 30 min; it was contained, but check the owning lane's mix invocation (unguarded, or needs a heap cap)" }
 $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm'
-$metrics = "box ${box}%, mirror ${mirrorPct}%, compute ${computePct}%, vultr-tmp ${vultrTmpPct}%, node-free ${nodeFreeGb}GB [route=$mirrorRoute mirror=${mirrorMs}ms compute=${computeMs}ms]"
+$metrics = "box ${box}%, node ${nodePct}%, worker ${workerPct}%, worker-tmp ${workerTmpPct}%, worker-disk ${workerDiskPct}%, commit box ${boxCommitPct}%/node ${nodeCommitPct}%, worker-oom ${workerOom}, worker-mem ${workerMemMb}MB, node-erlkill ${nodeErlKill}, node-free ${nodeFreeGb}GB [route=$nodeRoute node=${nodeMs}ms worker=${workerMs}ms]"
 if ($alarms.Count) { $line = "node-utilization-monitor $stamp $($alarms -join ' | ')" }
 elseif ($failed.Count) { $line = "node-utilization-monitor $stamp UNKNOWN: $($failed -join ',') probe(s) failed - cannot measure ($metrics)" }
 else { $line = "node-utilization-monitor $stamp ok: $metrics" }
-# fail-closed: a guard that cannot MEASURE must say so (not 'ok'); 2 consecutive UNKNOWN is itself an alarm (node likely down / disk-blind)
 $twoUnknown = ($failed.Count -gt 0 -and $alarms.Count -eq 0 -and $priorUnknown)
 $noteReal = ($alarms.Count -gt 0 -and -not $priorReal)
 $noteUnknown = ($twoUnknown -and -not $priorDelivered)
 $doNote = ($NoteOnWaste -and ($noteReal -or $noteUnknown))
 $stored = if ($noteUnknown -and $doNote) { "$line [DELIVERED]" } else { $line }
 Set-Content -LiteralPath $log -Value $stored
-# DELEG-UTIL-TIMESERIES: append a rolling per-machine utilization row (box/lap/vultr CPU %, node disk) so the delegation estimator has history, not just the last line
 $ts = Join-Path (Split-Path $log) 'node-utilization.timeseries.csv'
-$tsHeader = 'iso,box_cpu,box_free_mb,lap_cpu,lap_free_mb,vultr_cpu,node_free_gb,route'
+$tsHeader = 'iso,box_cpu,box_free_mb,node_cpu,node_free_mb,worker_cpu,node_free_gb,route'
 $boxFreeMb = [int]((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory / 1024)
-if (-not (Test-Path $ts) -or (Get-Content -LiteralPath $ts -TotalCount 1) -ne $tsHeader) { Set-Content -LiteralPath $ts -Value $tsHeader }
-Add-Content -LiteralPath $ts -Value ("{0},{1},{2},{3},{4},{5},{6},{7}" -f (Get-Date).ToString('s'), $box, $boxFreeMb, $mirrorPct, $lapFreeMb, $computePct, $nodeFreeGb, $mirrorRoute)
+if (-not (Test-Path $ts)) { Set-Content -LiteralPath $ts -Value $tsHeader }
+else {
+    $first = Get-Content -LiteralPath $ts -TotalCount 1
+    if ($first -ne $tsHeader) {
+        $rows = @(Get-Content -LiteralPath $ts | Select-Object -Skip 1)
+        $sameShape = (($first -split ',').Count -eq ($tsHeader -split ',').Count)
+        Set-Content -LiteralPath $ts -Value (@($tsHeader) + $(if ($sameShape) { $rows } else { @() }))
+    }
+}
+Add-Content -LiteralPath $ts -Value ("{0},{1},{2},{3},{4},{5},{6},{7}" -f (Get-Date).ToString('s'), $box, $boxFreeMb, $nodePct, $nodeFreeMb, $workerPct, $nodeFreeGb, $nodeRoute)
 if ((Get-Item $ts).Length -gt 1MB) { $keep = Get-Content -LiteralPath $ts -Tail 4000; Set-Content -LiteralPath $ts -Value (@($tsHeader) + $keep) }
 $line
 if ($doNote) {
     $kitExe = Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe'
     $backlog = Join-Path $PSScriptRoot '..\docs\backlog'
     $noteText = "node-utilization ALARM: $line"
-    # use the call operator, NOT Start-Process -ArgumentList: the latter splits a text arg containing spaces and ()<> into many operands (kit then sees 20 operands, rc=2 - the silent-drop bug). retry a genuine transient CAS reject; capture the real stderr so a failure says why.
     $rc = 1; $out = ''
     foreach ($d in @(0, 2, 5, 10)) {
         if ($d -gt 0) { Start-Sleep -Seconds $d }
-        $out = (& $kitExe agile note $backlog 'NODE-ALWAYS-FED' $noteText '--as' 'resilience' 2>&1 | Out-String)
+        $out = (& $kitExe agile note $backlog 'NODE-ALWAYS-FED' $noteText '--as' 'org' 2>&1 | Out-String)
         $rc = $LASTEXITCODE
         if ($rc -eq 0) { break }
     }

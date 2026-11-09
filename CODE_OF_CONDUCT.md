@@ -11,6 +11,16 @@
   - [TypeScript](#typescript)
   - [Elixir](#elixir)
   - [Rust](#rust)
+  - [Gleam](#gleam)
+  - [Zig](#zig)
+  - [C](#c-1)
+  - [Lua](#lua)
+  - [Pascal](#pascal)
+  - [WGSL](#wgsl)
+  - [Lean](#lean)
+  - [Kotlin](#kotlin)
+  - [Swift](#swift)
+  - [eBPF](#ebpf)
   - [Spiral](#spiral)
 - [Rebirth in the Wild](#rebirth-in-the-wild)
 
@@ -168,9 +178,69 @@ Adding to this perplexity, Rust's concurrency model - its 'Arcs', 'Mutexes' and 
 
 Rust is an intriguing experiment, a hard-fought battle against memory unsafety, but in the grand scheme, not the answer. The language is an unsustainable solution to an evolving problem. A stopgap rather than a remedy. A tape on a bullet wound. We need a language that evolves with us, not one that roots us in the past while the times accelerate away.
 
+### Gleam
+
+Gleam arrives on the BEAM like a polite guest at a riot, offering types to a kingdom that had learned to live without them. Its static checks and friendly errors are a welcome lantern in Erlang's ancient halls, and its pattern matching is clean enough to make the old guard blush. Yet it walks on stilts made of someone else's runtime, its ecosystem a young sapling in the shadow of OTP's oak, and every bridge to the wider BEAM world is a toll road paid in FFI files and wrapper modules.
+
+It is a sincere attempt to civilize the actor model, but civilization by addition is still addition. Another syntax, another toolchain, another island. The BEAM deserves types that arrive from a language able to speak to the rest of the world as fluently as it speaks to the BEAM.
+
+### Zig
+
+Zig strides in with the swagger of a C successor, promising no hidden control flow, no hidden allocations, and comptime as the cure for the preprocessor's sins. It is honest to a fault, every allocator passed by hand like a sacred relic, every error union spelled out in full. For those who loved C's bluntness but hated its booby traps, it feels like a homecoming.
+
+But honesty is not abstraction. Comptime is a clever trick that stops at the border of the type system, and the language changes its own rules release after release, leaving yesterday's code stranded on a shifting shore. Zig makes the machine visible; it does not make the problem smaller. It is a superb target and a laborious place to live.
+
+### C
+
+C is the bedrock beneath every cathedral, the language the others pretend not to need while quietly linking against it. Fast, portable, and older than most of its critics, it remains the universal adapter of computing, the tongue every operating system still speaks at home.
+
+It is also a minefield with a map drawn in invisible ink. Undefined behavior lurks behind every pointer, every buffer is a dare, and every macro is a small conspiracy against the reader. C gives you the whole machine and none of the safety rails, and after fifty years we have learned that humans should be writing it far less often than compilers do.
+
+### Lua
+
+Lua is the pocket knife of scripting, small enough to embed anywhere and fast enough to be forgiven for its quirks. Game engines and editors adore it, and its tables bend into arrays, maps and objects with a shrug.
+
+Yet the shrug is the problem. One-based indices, globals by default, and a single data structure doing the work of a dozen leave every large Lua program a careful act of discipline rather than design. It is perfect for the last mile and treacherous for the first hundred.
+
+### Pascal
+
+Pascal was the schoolmaster of a generation, teaching structure and strong types when the rest of the world was still drawing flowcharts with GOTOs. Its descendants still compile fast and read like plain prose, a quiet rebuke to languages that confuse noise with power.
+
+But the schoolmaster never left the schoolhouse. Its generics arrived late and cautious, its ecosystem lives in a few devoted corners, and its strengths are the virtues of 1970 polished for a world that has since asked for far more.
+
+### WGSL
+
+WGSL is the GPU's new lingua franca for the web, a shading language with the safety the browser demands and the parallelism the hardware begs for. It brings compute to every tab and makes the graphics card an ordinary citizen of the platform.
+
+Still, it is a narrow gate. No recursion, rigid memory layouts, and a type system built to satisfy validators rather than thinkers. Writing it by hand is like carving a cathedral with a scalpel. It is a destination for code, not a home for ideas, which is exactly why it should be generated.
+
+### Lean
+
+Lean is the mathematician's forge, where programs and proofs share a single anvil and a theorem can be checked as surely as a test. Dependent types, tactics, and a growing library of formalized mathematics make it one of the boldest experiments in what a language can promise.
+
+The price is steep. Proofs balloon beyond the code they protect, elaboration can crawl, and the gap between a verified kernel and a fast production program remains a canyon most teams will never cross. Lean shows the summit; few will live there.
+
+### Kotlin
+
+Kotlin is the diplomat who made peace with the JVM, trimming Java's ceremony with null safety, data classes, and coroutines while keeping every library within reach. Android crowned it, and many a Java veteran sighed in relief.
+
+Yet diplomacy has limits. It inherits the JVM's startup weight and its type erasure, multiplatform remains a promise more than a reality, and its type system, while kind, stops well short of what serious modeling requires. A better Java is still a Java.
+
+### Swift
+
+Swift entered as Apple's answer to an aging Objective-C, with value semantics, optionals, and protocols that read like a modern manifesto. On its home turf it is elegant, fast, and well tooled.
+
+Beyond that turf the walls close in. Its compile times can rival Rust's, its type checker sometimes surrenders to an expression it cannot solve, and its life outside Apple's garden is a frontier town with thin supply lines. A fine language with a short leash.
+
+### eBPF
+
+eBPF is the kernel's trapdoor for the bold, a tiny virtual machine that lets programs run inside the operating system without a reboot or a prayer. Networking, tracing and security tools have been reborn on it, peering into the machine with surgical precision.
+
+The verifier is its guardian and its jailer. Bounded loops, a pinched stack, a restricted instruction set, and error messages that read like riddles turn every program into a negotiation. It is a wonderful place to compile into and a punishing place to write by hand.
+
 ### Spiral
 
-A mythical beast, a chimera of sorts, Spiral emerges as a beacon of change. Inheriting the strengths and weaknesses of many languages, it promises to defy convention outputting natively to F#, Python, and C, and to TypeScript and Rust through F#'s Fable, among others. It tries to be a shape-shifter, a translator of thoughts into various dialects, and a stage for both speed and expressiveness to play their part. A rare feat that brings together the pros of C and Lisp, an effort to bridge paradigms and a reflection of our age where we seek to unify, to find commonality in diversity. It looks ahead, preparing to fully leverage the potentials of GPUs and other advanced computational devices.
+A mythical beast, a chimera of sorts, Spiral emerges as a beacon of change. Inheriting the strengths and weaknesses of many languages, it promises to defy convention outputting natively to Rust, F#, Python, C, Gleam, Zig, Lua, Pascal, TypeScript, Kotlin, Swift, Lean, WGSL, and eBPF, among others. It tries to be a shape-shifter, a translator of thoughts into various dialects, and a stage for both speed and expressiveness to play their part. A rare feat that brings together the pros of C and Lisp, an effort to bridge paradigms and a reflection of our age where we seek to unify, to find commonality in diversity. It looks ahead, preparing to fully leverage the potentials of GPUs and other advanced computational devices.
 
 But this commitment to lack a runtime and merge diverse languages brings complications. The idiosyncrasies of Python, the identity crisis of .NET, the stringent constraints of Rust — all are imbibed into Spiral's genetic code. Debugging can become a Herculean mission, a puzzle where each piece is drawn from a different set. Maintaining such a codebase is not unlike battling the Hydra; cut one head and two more emerge. The translations might lose nuance, the subtle art that gives each language its distinct character and power.
 

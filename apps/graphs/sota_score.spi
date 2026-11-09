@@ -1,0 +1,84 @@
+:< sm'_operators
+
+:# sota_score static =
+    :< testing
+
+:== weights = { agreement : i64; coverage : i64; readability : i64 }
+
+:== measure = { agree : i64; disagree : i64; coverage_milli : i64; readability_milli : i64 }
+
+:~ rule_1024 () : weights = { agreement = 400i64; coverage = 300i64; readability = 300i64 }
+
+:~ agreement_milli (m : measure) : i64 =
+    := compared = m.agree + m.disagree
+    ? compared = 0i64 ?> 0i64 |: m.agree * 1000i64 / compared
+
+:~ score (w : weights) (m : measure) : i64 =
+    (w.agreement * agreement_milli m + w.coverage * m.coverage_milli + w.readability * m.readability_milli + 500i64) / 1000i64
+
+:~ ^ per_mille_sum (ids : i64) (ok : list i64) (backends : i64) (sum : i64) : i64 * i64 =
+    ?= ok ?|
+    | n :: rest => per_mille_sum ids rest (backends + 1i64) (sum + n * 1000i64 / ids)
+    | [] => backends, sum
+
+:~ mean_milli ((backends, sum) : i64 * i64) : i64 = ? backends = 0i64 ?> 0i64 |: sum / backends
+
+:~ coverage_milli (ids : i64) (ok_per_backend : list i64) : i64 =
+    ? ids = 0i64 ?> 0i64 |: mean_milli (per_mille_sum ids ok_per_backend 0i64 0i64)
+
+:~ field (fields : array string) (i : i32) : string = ? i < am'::length fields ?> am'::index i fields |: ""
+
+:~ rows_of (text : string) : array (array string) =
+    sm'::lines text
+    |> am'::map' (\ line => sm'::split "\t" line |> array)
+    |> arraym::filter (\ f => field f 0i32 <> "id" && field f 0i32 <> "")
+
+:~ count_where (rows : array (array string)) (keep : array string -> bool) : i64 = conv (rows |> arraym::filter keep |> am'::length)
+
+:~ distinct_count (rows : array (array string)) (column : i32) : i64 =
+    conv (rows |> am'::map' (\ f => field f column) |> am'::distinct |> am'::length)
+
+:~ ok_share_milli (rows : array (array string)) (ids : i64) (backend : string) : i64 =
+    count_where rows (\ f => field f 1i32 = backend && field f 3i32 = "ok") * 1000i64 / ids
+
+:~ results_coverage_milli (rows : array (array string)) : i64 =
+    := ids = distinct_count rows 0i32
+    := backends = rows |> am'::map' (\ f => field f 1i32) |> am'::distinct
+    := count : i64 = conv (am'::length backends)
+    ? ids = 0i64 || count = 0i64 ?> 0i64
+    |: (backends |> arraym::fold (\ acc b => acc + ok_share_milli rows ids b) 0i64) / count
+
+:~ measure_of_results (text : string) : measure =
+    := rows = rows_of text
+    {
+        agree = count_where rows (\ f => field f 10i32 = "agree")
+        disagree = count_where rows (\ f => field f 10i32 = "disagree")
+        coverage_milli = results_coverage_milli rows
+        readability_milli = 0i64
+    }
+
+:~ results_fixture () : string =
+    "id\tbackend\tsuite\tcompile\tcompile_ms\tresidual\tnative\tnative_ms\texit\tstdout\toracle\n"
+    ++# "a\tC\tx\tok\t1\tr\tran\t1\t0\ts\tagree\n"
+    ++# "b\tC\tx\tok\t1\tr\tran\t1\t0\ts\tagree\n"
+    ++# "c\tC\tx\terror\t1\tr\tno\t0\t0\ts\t\n"
+    ++# "a\tZig\tx\tok\t1\tr\tran\t1\t0\ts\t\n"
+
+///> rust
+:# a_results_file_scores_by_the_same_rule =
+    := m = results_fixture () |> measure_of_results
+    (m.agree, m.disagree, m.coverage_milli, score (rule_1024 ()) m) |> _assert_eq (2i64, 0i64, 499i64, 550i64)
+
+///> rust
+:# the_10_30_full_native_run_scores_493 =
+    score (rule_1024 ()) { agree = 6136i64; disagree = 0i64; coverage_milli = 309i64; readability_milli = 0i64 }
+    |> _assert_eq 493i64
+
+///> rust
+:# coverage_is_the_mean_per_backend_share_of_all_ids =
+    (coverage_milli 4i64 [ 2i64; 1i64 ], coverage_milli 0i64 [ 1i64 ], coverage_milli 4i64 [])
+    |> _assert_eq (375i64, 0i64, 0i64)
+
+///> rust
+:# a_run_with_nothing_compared_has_no_agreement =
+    agreement_milli { agree = 0i64; disagree = 0i64; coverage_milli = 0i64; readability_milli = 0i64 } |> _assert_eq 0i64

@@ -9,6 +9,8 @@ param(
     [switch] $Tls,
     [string[]] $TlsSanIp,
     [string] $KitBinary,
+    [switch] $NoK3s,
+    [ValidateRange(1, 64)] [int] $Slots = 1,
     [string] $KitRoot = (Join-Path $PSScriptRoot '..\..\kit'),
     [ValidateRange(10, 3600)] [int] $ReadySeconds = 300,
     [switch] $SkipVerify,
@@ -61,15 +63,15 @@ systemctl reload ssh 2>/dev/null || systemctl reload sshd
 echo "sshd: updated ($($sshd.Count) lines)"
 "@
 
+if (-not $NoK3s) {
 $bootstrap = [IO.File]::ReadAllText((Join-Path $recipe 'bootstrap.sh'))
 Invoke-Remote 'k3s bootstrap' ("K3S_VERSION='$K3sVersion'; export K3S_VERSION`n" + $bootstrap) | Select-Object -Last 1
 
 $manifest = [IO.File]::ReadAllText((Join-Path $recipe 'iggy.yaml')) -replace "`r", ''
 $manifest = Edit-Line $manifest 'image: apache/iggy:0.9.0' "image: $IggyImage"
-$manifest = Edit-Line $manifest "            limits:`n              memory: 3Gi" "            limits:`n              memory: $IggyMemory"
-if (-not $HostNetwork) {
-    $manifest = Edit-Line $manifest 'hostNetwork: true' 'hostNetwork: false'
-    $manifest = Edit-Line $manifest 'dnsPolicy: ClusterFirstWithHostNet' 'dnsPolicy: ClusterFirst'
+$manifest = Edit-Line $manifest "              memory: 512Mi`n            limits:`n              cpu: 250m`n              memory: 512Mi" "              memory: $IggyMemory`n            limits:`n              cpu: 250m`n              memory: $IggyMemory"
+if ($HostNetwork) {
+    $manifest = Edit-Line $manifest "      enableServiceLinks: false" "      hostNetwork: true`n      dnsPolicy: ClusterFirstWithHostNet`n      enableServiceLinks: false"
 }
 Invoke-Remote 'iggy' @"
 set -eu
@@ -132,7 +134,36 @@ echo "iggy TLS: CA at /root/iggy-ca/ca.crt (consumers trust it via IGGY_CA_PEM);
 "@
 }
 
-if ($KitBinary) {
+}
+
+if ($KitBinary -and $NoK3s) {
+    Invoke-Remote 'kit-worker (systemd)' @"
+set -eu
+test -x /$($KitBinary.TrimStart('/')) || { echo "kit-worker: $KitBinary is not an executable on the machine" >&2; exit 7; }
+cat > /etc/systemd/system/kit-worker.service <<'EOF'
+[Unit]
+Description=kit job host (rig worker, no k3s)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=-/etc/environment
+Environment=KIT_JOB_HOST_IDLE_EXIT_SECONDS=0
+Environment=KIT_JOB_SLOTS=$Slots
+ExecStart=$KitBinary job host
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable --now kit-worker.service >/dev/null
+sleep 3
+systemctl is-active kit-worker.service
+echo "kit-worker: running `$(pgrep -fc "^$KitBinary job host") job host(s), slots $Slots"
+"@
+} elseif ($KitBinary) {
     Invoke-Remote 'kit-worker' @"
 set -eu
 m=`$(mktemp)
@@ -163,7 +194,7 @@ spec:
         securityContext: {privileged: true}
         env:
         - {name: KIT_JOB_HOST_IDLE_EXIT_SECONDS, value: "0"}
-        - {name: KIT_JOB_SLOTS, value: "1"}
+        - {name: KIT_JOB_SLOTS, value: "$Slots"}
         command: ["chroot", "/host", "/bin/bash", "-lc"]
         args:
         - |
@@ -189,7 +220,7 @@ echo "kit-worker: running `$(pgrep -fc "^$KitBinary job host") job host(s)"
 "@
 }
 
-if (-not ($SkipVerify -or $DryRun)) {
+if (-not ($SkipVerify -or $DryRun -or $NoK3s)) {
     $ip = (ssh @sshOptions $SshAlias "k3s kubectl -n iggy get svc iggy -o jsonpath='{.spec.clusterIP}'").Trim()
     $port = Get-Random -Minimum 20000 -Maximum 29999
     $tunnel = Start-Process ssh -ArgumentList (@($sshOptions) + @('-N', '-o', 'ExitOnForwardFailure=yes', '-L', "${port}:${ip}:3000", $SshAlias)) -PassThru -WindowStyle Hidden
