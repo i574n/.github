@@ -92,7 +92,7 @@ if ($nodeErlKill -ge 1) { $alarms += "NODE-ERLKILL: the node's erl-mem-guard kil
 $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm'
 $metrics = "box ${box}%, node ${nodePct}%, worker ${workerPct}%, worker-tmp ${workerTmpPct}%, worker-disk ${workerDiskPct}%, commit box ${boxCommitPct}%/node ${nodeCommitPct}%, worker-oom ${workerOom}, worker-mem ${workerMemMb}MB, node-erlkill ${nodeErlKill}, node-free ${nodeFreeGb}GB [route=$nodeRoute node=${nodeMs}ms worker=${workerMs}ms]"
 if ($alarms.Count) { $line = "node-utilization-monitor $stamp $($alarms -join ' | ')" }
-elseif ($failed.Count) { $line = "node-utilization-monitor $stamp UNKNOWN: $($failed -join ',') probe(s) failed - cannot measure ($metrics)" }
+elseif ($failed.Count) { $line = "node-utilization-monitor $stamp UNKNOWN: $($failed -join ',') gauge(s) failed - cannot measure ($metrics)" }
 else { $line = "node-utilization-monitor $stamp ok: $metrics" }
 $twoUnknown = ($failed.Count -gt 0 -and $alarms.Count -eq 0 -and $priorUnknown)
 $noteReal = ($alarms.Count -gt 0 -and -not $priorReal)

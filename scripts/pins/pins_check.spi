@@ -1,5 +1,6 @@
 :< sm'_operators
 :< pins
+:< crates
 
 := quoted_by (quote : string) (t : string) : bool =
     (sm.length t : i32) >= 2i32 && sm'.starts_with quote t && sm'.ends_with quote t
@@ -88,14 +89,27 @@
     |? result.plain <> original ?> console.write_line (path ++# ": not rewritten, its lines do not round-trip")
     |: file_system.write_all_text path result.fixed
 
+:~ ^ line_list (text : array string) (i : i32) (acc : list string) : list string =
+    ? i < 0i32 ?> acc |: line_list text (i - 1i32) (am'.index i text :: acc)
+
+:= crate_check (path : string) (crates : list crate) (original : string) : i32 =
+    := text = sm'.lines original
+    := found = crate_findings path crates (line_list text ((am'.length text : i32) - 1i32) [])
+    listm.iter console.write_line found
+    listm.length found
+
+:= file_check (path : string) (fix : bool) (typed : pinset) (original : string) : i32 =
+    := result = scan path (sm'.lines original) 0i32 "" typed { count = 0i32; fixed = ""; plain = "" }
+    ? fix ?> fix_file path original result
+    result.count
+
 :~ ^ check_args (index : i32) (fix : bool) (typed : pinset) (count : i32) : i32 =
     ?= env.try_command_line_argument index ?|
     | None => count
     | Some path =>
         := original = file_system.read_all_text path
-        := result = scan path (sm'.lines original) 0i32 "" typed { count = 0i32; fixed = ""; plain = "" }
-        ? fix ?> fix_file path original result
-        check_args (index + 1i32) fix typed (count + result.count)
+        := found = ?= repo_crates path ?| | Some cs => crate_check path cs original | None => file_check path fix typed original
+        check_args (index + 1i32) fix typed (count + found)
 
 := main () : i32 =
     := fix = ?= env.try_command_line_argument 0i32 ?| | Some first => first = "--fix" | None => false

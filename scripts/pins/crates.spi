@@ -1,0 +1,116 @@
+///- --package .
+:# crates static =
+    :< testing
+
+:< sm'_operators
+
+:| crate =
+    | Regex
+    | Borsh
+    | SerdeJson
+    | Chrono
+    | Futures
+
+:= crate_name (c : crate) : string =
+    ?= c ?|
+    | Regex => "regex"
+    | Borsh => "borsh"
+    | SerdeJson => "serde_json"
+    | Chrono => "chrono"
+    | Futures => "futures"
+
+:= crate_version (c : crate) : string =
+    ?= c ?|
+    | Regex => "1.10"
+    | Borsh => "1.5"
+    | SerdeJson => "1.0"
+    | Chrono => "0.4"
+    | Futures => "0.3"
+
+:= crate_features (c : crate) : list string =
+    ?= c ?|
+    | SerdeJson => ["arbitrary_precision"]
+    | _ => []
+
+:= quoted (s : string) : string = "\"" ++# s ++# "\""
+
+:= feature_list (features : list string) : string = listm.fold (\ acc f => ? acc = "" ?> quoted f |: acc ++# ", " ++# quoted f) "" features
+
+:= crate_line (c : crate) : string =
+    := v = quoted (crate_version c)
+    ?= crate_features c ?|
+    | [] => crate_name c ++# " = " ++# v
+    | fs => crate_name c ++# " = { version = " ++# v ++# ", features = [" ++# feature_list fs ++# "] }"
+
+:= workspace_dependencies (crates : list crate) : string =
+    listm.fold (\ text c => text ++# crate_line c ++# "\n") "[workspace.dependencies]\n" crates
+
+:= dice_crates () : list crate = [Chrono; Regex; Borsh; SerdeJson; Futures]
+
+:= regex_crates () : list crate = [Regex]
+
+///> rust
+:# a_crate_line_carries_the_catalog_version_and_its_features =
+    (crate_line Regex, crate_line SerdeJson) |> _assert_eq ("regex = \"1.10\"", "serde_json = { version = \"1.0\", features = [\"arbitrary_precision\"] }")
+
+///> rust
+:# the_regex_repo_block_is_generated_from_the_catalog =
+    workspace_dependencies (regex_crates ()) |> _assert_eq "[workspace.dependencies]\nregex = \"1.10\"\n"
+
+:= header_state (t : string) : option bool =
+    ? t = "[workspace.dependencies]" ?> Some !+
+    |? sm'::starts_with "[" t ?> Some !-
+    |: None
+
+:= section_step ((inside, acc) : bool * list string) (line : string) : bool * list string =
+    := t = sm'::trim line
+    ?= header_state t ?|
+    | Some now => now, acc
+    | None => ? inside && t <> "" ?> inside, listm.append acc [t] |: inside, acc
+
+:= table_lines (lines : list string) : list string = snd (listm.fold section_step (!-, []) lines)
+
+:= line_of_crate (c : crate) (lines : list string) : option string =
+    listm.fold (\ acc l => ? sm'::starts_with (crate_name c ++# " =") l ?> Some l |: acc) None lines
+
+:= missing_msg (c : crate) : string = crate_name c ++# ": missing, catalog " ++# crate_line c
+
+:= drift_msg (c : crate) (l : string) : string = crate_name c ++# ": repo " ++# l ++# " vs catalog " ++# crate_line c
+
+:= crate_drift (c : crate) (table : list string) : list string =
+    ?= line_of_crate c table ?|
+    | None => [missing_msg c]
+    | Some l => ? l = crate_line c ?> [] |: [drift_msg c l]
+
+:= table_drift (crates : list crate) (lines : list string) : list string =
+    := table = table_lines lines
+    listm.fold (\ acc c => listm.append acc (crate_drift c table)) [] crates
+
+:= regex_root () : list string = ["[workspace]"; "[workspace.dependencies]"; "regex = \"1\""; "rx_crate = { path = \"units/rx_crate\" }"; "[profile.release]"]
+
+:= dice_root () : list string = listm.append ["[workspace.dependencies]"] (listm.map crate_line (dice_crates ()))
+
+///> rust
+:# a_repo_table_equal_to_the_catalog_has_no_drift =
+    table_drift (dice_crates ()) (dice_root ()) |> _assert_eq []
+
+///> rust
+:# a_drifted_crate_version_is_named_with_both_values =
+    table_drift (regex_crates ()) (regex_root ()) |> _assert_eq ["regex: repo regex = \"1\" vs catalog regex = \"1.10\""]
+
+:= repo_crates (path : string) : option (list crate) =
+    := p = sm'::replace "\\" "/" path
+    ? sm'::ends_with "/dice/Cargo.toml" p ?> Some (dice_crates ())
+    |? sm'::ends_with "/regex/Cargo.toml" p ?> Some (regex_crates ())
+    |: None
+
+:= crate_findings (path : string) (crates : list crate) (lines : list string) : list string =
+    listm.map (\ m => path ++# ": " ++# m) (table_drift crates lines)
+
+///> rust
+:# a_cargo_path_picks_its_repo_crate_list =
+    (repo_crates "C:\\home\\git\\regex\\Cargo.toml", repo_crates "/x/blog/Cargo.toml") |> _assert_eq (Some [Regex], None)
+
+///> rust
+:# findings_name_the_file =
+    crate_findings "regex/Cargo.toml" (regex_crates ()) (regex_root ()) |> _assert_eq ["regex/Cargo.toml: regex: repo regex = \"1\" vs catalog regex = \"1.10\""]

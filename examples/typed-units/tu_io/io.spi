@@ -1,0 +1,14 @@
+///- --package . --timeout 600000
+:# io static =
+    :< testing
+
+:= read_input (path : string) : string = file_system.read_all_text path
+
+:= write_input ((path, text) : string * string) : () = file_system.write_all_text path text
+
+///> rust
+///> gleam
+:# what_is_written_reads_back_static =
+    := path = "typed-units-io-probe.txt"
+    write_input (path, "square")
+    read_input path |> _assert_eq "square"

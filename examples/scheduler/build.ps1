@@ -6,7 +6,7 @@ Set-Location $ScriptDir
 $ErrorActionPreference = "Stop"
 . ../../../spiral/scripts/core.ps1
 
-$livebook = Join-Path $ScriptDir "../../../spiral/apps/cells/spi/run_notebook.ps1"
+$livebook = Join-Path ($env:SPIRAL_CELLS_ROOT ?? (Join-Path $ScriptDir "../../../spiral/apps/cells")) "spi/run_notebook.ps1"
 $spi = Join-Path $ScriptDir "scheduler.spi"
 if (!$fast) {
     { pwsh -NoProfile -File $livebook --path $spi --output-path (Join-Path $ScriptDir "scheduler.spi.ipynb") } | Invoke-Block -Retries $($env:CI ? 3 : 1)

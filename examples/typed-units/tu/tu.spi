@@ -1,0 +1,11 @@
+:< sm'_operators
+:< model
+:< io
+:< feature
+
+:= main () : i32 =
+    := path = "typed-units-input.txt"
+    write_input (path, "square\ntriangle\ncircle")
+    := text = read_input path
+    console.write_line ("sides " ++# sm'::show (total_sides text) ++# " first " ++# shape_text (shape_of_word "square"))
+    0i32

@@ -4,6 +4,7 @@ param(
     [switch] $NoteOnIdle
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'agent-runtime.ps1')
 $kit = Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe'
 $backlog = Join-Path $PSScriptRoot '..\docs\backlog'
 $schedDir = Join-Path $env:LOCALAPPDATA 'kit\schedules'
@@ -12,9 +13,7 @@ New-Item -ItemType Directory -Force $schedDir | Out-Null
 $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm'
 $now = Get-Date
 
-# Only meaningful during an armed autonomous run: outside one, an idle lane is expected, not a fault.
-# Reuse the standing.txt until= contract the heartbeat-staleness-guard reads.
-$standing = Join-Path $env:USERPROFILE '.claude\autonomous\standing.txt'
+$standing = Get-AgentStandingFile
 $runActive = $false
 if (Test-Path $standing) {
     $m = [regex]::Match(((Get-Content -LiteralPath $standing -Raw -ErrorAction SilentlyContinue) + ''), 'until=(\S+)')
@@ -27,18 +26,9 @@ if (-not $runActive) {
     exit 0
 }
 
-# Lane roster DERIVED from the live CC session registry (Get-ActiveLanes in node-env.ps1): the canonical team names
-# of sessions active this run, so a CC rename never leaves this stale (LANE-RENAME-RECONCILE). Fail-open to a static
-# set if the registry/helper is unreadable. A team that does not resolve just yields a 0 ready-count (no false alarm).
 try { . (Join-Path $PSScriptRoot 'node-env.ps1'); $lanes = @(Get-ActiveLanes) } catch { $lanes = @() }
-if (-not $lanes.Count) { $lanes = @('i574n', 'management', 'rig', 'fiscal', 'compiler', 'microblog', 'tibia') }
+if (-not $lanes.Count) { $lanes = @('org', 'rig', 'fiscal', 'compiler', 'microblog', 'tibia') }
 
-# READY COUNT: the FAST path only. `kit agile list ... --ready` returns in ~3s and prints a `shown=N` trailer that is
-# the team-filtered ready count. NEVER use `kit agile wip` - it recomputes lease/claim state over the whole
-# state/agile.spi (9.4MB+ and growing) and HANGS >120s, which would hang this watchdog itself (finding, session
-# 614162e5). The count is still coarse: the loose --team filter surfaces shared/cross-team items, so every lane reads
-# ~>0; AGILE-WAITS-AS-DATA + GATE-ROTATE-PAST-STUCK are the deps that make it a GENUINE own-team-undeclined-ungated
-# count. For alert-only v1 that coarseness biases toward alerting (acceptable; main triages), it never over-suppresses.
 function Get-ReadyCount([string] $team) {
     $outf = [IO.Path]::GetTempFileName()
     $errf = [IO.Path]::GetTempFileName()
@@ -58,14 +48,24 @@ function Get-ReadyCount([string] $team) {
     }
 }
 
-# Lane state: Active (fresh beacon) | IdleWithWork (stale beacon + ready>0) | IdleNoWork (stale beacon + ready==0)
-#           | NoBeacon (lane emits no autonomous-<lane>.last.log at all - idle-blind, the hard prerequisite gap)
 $idleWithWork = @()
 $noBeacon = @()
 $active = @()
 $idleNoWork = @()
 $readyUnknown = @()
-foreach ($lane in $lanes) {
+$sessions = @()
+try { $sessions = @(Get-LaneSessions) } catch { $sessions = @() }
+$readyByTeam = @{}
+foreach ($s in $sessions) {
+    $who = if ($s.Session -ieq $s.Team) { $s.Session } else { "$($s.Session)/$($s.Team)" }
+    if ($s.Status -ne 'idle' -or $s.StatusMinutes -le $IdleMinutes) { $active += "${who}($($s.Status) $($s.StatusMinutes)m)"; continue }
+    if (-not $readyByTeam.ContainsKey($s.Team)) { $readyByTeam[$s.Team] = Get-ReadyCount $s.Team }
+    $ready = $readyByTeam[$s.Team]
+    if ($ready -lt 0) { $readyUnknown += "${who}(idle $($s.StatusMinutes)m, ready=?)" }
+    elseif ($ready -gt 0) { $idleWithWork += "${who}(idle $($s.StatusMinutes)m, ready ${ready})" }
+    else { $idleNoWork += "${who}(idle $($s.StatusMinutes)m, no ready)" }
+}
+foreach ($lane in $(if ($sessions.Count) { @() } else { $lanes })) {
     $beacon = Join-Path $schedDir "autonomous-$lane.last.log"
     if (-not (Test-Path $beacon)) { $noBeacon += $lane; continue }
     $age = [int](($now - (Get-Item $beacon).LastWriteTime).TotalMinutes)
@@ -76,9 +76,6 @@ foreach ($lane in $lanes) {
     else { $idleNoWork += "${lane}(idle ${age}m, no ready)" }
 }
 
-# BOX-SATURATED (P0 11-08 fold): box pegged while the node sits idle = lanes failed to offload heavy work. Measure box
-# CPU and the node's CPU (via the now-cached, retrying Invoke-NodeProbeWin from the sibling node-env.ps1). If the node
-# cannot be measured, nodeCpu stays -1 and the condition is false - fail-open (never alarm on an unmeasured node).
 $boxCpu = [int]((Get-CimInstance Win32_Processor | Measure-Object LoadPercentage -Average).Average)
 $nodeCpu = -1; $nodeRoute = 'none'
 try {
@@ -87,35 +84,44 @@ try {
     if ($np.ok) { $nodeRoute = $np.route; $nodeCpu = [int](@($np.lines | Where-Object { $_ -match '^\d+$' })[0]) }
 }
 catch {}
-$boxHot = ($boxCpu -gt 90) -and ($nodeCpu -ge 0) -and ($nodeCpu -lt 50)
+try {
+    $la = & ssh -o BatchMode=yes -o ConnectTimeout=12 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 ganymede 'echo $(cut -d" " -f1 /proc/loadavg) $(nproc)' 2>$null
+    if ($LASTEXITCODE -eq 0 -and "$la" -match '^([\d.]+) (\d+)$') {
+        $gPct = [int][math]::Min(100, [double]$Matches[1] / [int]$Matches[2] * 100)
+        if ($nodeCpu -lt 0 -or $gPct -lt $nodeCpu) { $nodeCpu = $gPct; $nodeRoute = 'ganymede' }
+    }
+}
+catch {}
+$heavyNames = '^(dotnet|cargo|rustc|cc1|cc1plus|clang|gcc|ld|lld|link|beam\.smp|erl|zig|gleam|lua|luajit|node|bun|SpiralCompiler)$'
+$cores = [Environment]::ProcessorCount
+$sampleA = @{}; Get-Process | Where-Object { $_.ProcessName -match $heavyNames } | ForEach-Object { $sampleA[$_.Id] = $_.CPU }
+Start-Sleep -Seconds 3
+$heavy = @(Get-Process | Where-Object { $_.ProcessName -match $heavyNames -and $sampleA.ContainsKey($_.Id) } | ForEach-Object {
+    [pscustomobject]@{ Name = $_.ProcessName; Pct = [math]::Round(($_.CPU - $sampleA[$_.Id]) / 3 / $cores * 100, 1) } } | Where-Object Pct -gt 0)
+$heavyPct = [int](($heavy | Measure-Object Pct -Sum).Sum)
+$heavyTop = ($heavy | Sort-Object Pct -Descending | Select-Object -First 3 | ForEach-Object { "$($_.Name) $($_.Pct)%" }) -join ', '
+$boxHot = ($boxCpu -gt 90) -and ($heavyPct -ge 25) -and ($nodeCpu -ge 0) -and ($nodeCpu -lt 50)
 
 $alarms = @()
 if ($idleWithWork.Count) {
     $alarms += "IDLE-WITH-READY: $($idleWithWork -join ', ') - lane(s) idle >${IdleMinutes}min in an armed run while their team has ready, unblocked items; wake them (ready count is coarse pending AGILE-WAITS-AS-DATA, but idle beacon in an armed run is the signal)"
 }
-# NO-BEACON is the prerequisite gap, not a per-tick alarm: report it in the status line and deliver it ONCE (rising
-# edge), because until a lane adopts the autonomous-<lane>.last.log beacon convention it is simply invisible to this
-# watch. management's beacon is the reference impl; the other lanes must emit one for the alarm to see their idleness.
 $gap = if ($noBeacon.Count) { " | NO-BEACON (idle-blind): $($noBeacon -join ',')" } else { '' }
 
 $prior = (Get-Content -LiteralPath $log -Tail 1 -ErrorAction SilentlyContinue)
 $priorIdle = "$prior" -match 'IDLE-WITH-READY:'
 $priorGap = "$prior" -match 'NO-BEACON'
-# 2-tick sustain (~15-30min at the 15min cadence) approximates "box >90% for 10min" without cross-run state: hot this
-# tick AND the prior tick already hot (pending or fired) => BOX-SATURATED; a first hot tick is only PENDING (no alarm).
 $priorBoxHot = "$prior" -match 'BOX-SATURATED|BOX-SAT-PENDING'
 $boxSat = $boxHot -and $priorBoxHot
 $boxTag = if ($boxHot -and -not $boxSat) { ' | BOX-SAT-PENDING' } else { '' }
-if ($boxSat) { $alarms += "BOX-SATURATED: box CPU ${boxCpu}% sustained while node ($nodeRoute) CPU ${nodeCpu}% <50% - lanes are not offloading heavy work; route it to the node (node-env Select-OffloadTarget / Test-BoxHeavyGuard refuse the starved box)" }
+if ($boxSat) { $alarms += "BOX-SATURATED: box CPU ${boxCpu}% sustained (heavy ${heavyPct}%: $heavyTop) while node ($nodeRoute) CPU ${nodeCpu}% <50% - lanes are not offloading heavy work; route it to the node (node-env Select-OffloadTarget / Test-BoxHeavyGuard refuse the starved box)" }
 
-$detail = "active=[$($active -join ',')] idleWithWork=$($idleWithWork.Count) idleNoWork=$($idleNoWork.Count) noBeacon=$($noBeacon.Count) readyUnknown=$($readyUnknown.Count) box=${boxCpu}% node=${nodeCpu}%"
+$detail = "active=[$($active -join ',')] idleWithWork=$($idleWithWork.Count) idleNoWork=$($idleNoWork.Count) noBeacon=$($noBeacon.Count) readyUnknown=$($readyUnknown.Count) box=${boxCpu}% heavy=${heavyPct}% node=${nodeRoute}:${nodeCpu}%"
 if ($alarms.Count) { $line = "idle-with-ready-alarm $stamp $($alarms -join ' | ')$gap$boxTag [$detail]" }
 else { $line = "idle-with-ready-alarm $stamp ok: no idle-with-ready lane$gap$boxTag [$detail]" }
 Set-Content -LiteralPath $log -Value $line
 $line
 
-# Deliver to main (owner of NODE-ALWAYS-FED, the keep-lanes-fed channel main watches) on a RISING edge only, with the
-# CAS-retry + real-stderr-capture pattern the node-utilization monitor uses. The run's final report reads this log too.
 $deliver = $false
 $noteText = $null
 if ($idleWithWork.Count -and -not $priorIdle) { $deliver = $true; $noteText = "IDLE-WITH-READY ALARM: $($idleWithWork -join ', ') idle in the armed run with ready work - wake the lane(s)" }
@@ -126,7 +132,7 @@ if ($NoteOnIdle -and $deliver) {
     $rc = 1; $out = ''
     foreach ($d in @(0, 2, 5, 10)) {
         if ($d -gt 0) { Start-Sleep -Seconds $d }
-        $out = (& $kit agile note $backlog 'NODE-ALWAYS-FED' $noteText '--as' 'management' 2>&1 | Out-String)
+        $out = (& $kit agile note $backlog 'NODE-ALWAYS-FED' $noteText '--as' 'org' 2>&1 | Out-String)
         $rc = $LASTEXITCODE
         if ($rc -eq 0) { break }
     }

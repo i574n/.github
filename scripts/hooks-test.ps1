@@ -1,5 +1,6 @@
 param([string] $Root = (Join-Path $env:TEMP ('kit-hooks-test-' + $PID)))
-$hooks = (Join-Path $HOME '.claude\hooks')
+. (Join-Path $PSScriptRoot 'agent-runtime.ps1')
+$hooks = Get-AgentHooksDir
 $failed = 0
 function Check([bool] $ok, [string] $label) {
     if (-not $ok) { $script:failed++ }
@@ -9,7 +10,7 @@ Remove-Item -Recurse -Force $Root -ErrorAction Ignore
 [void][IO.Directory]::CreateDirectory($Root)
 
 "== tree-lease hook"
-$leaseFile = Join-Path $env:LOCALAPPDATA ('kit\tree-leases\probe-' + $PID + '.lease')
+$leaseFile = Join-Path $env:LOCALAPPDATA ('kit\tree-leases\trial-' + $PID + '.lease')
 Set-Content $leaseFile "root=$Root`npid=$PID`nholder=hooks-test`nsince=$(Get-Date -Format HH:mm)"
 $cases = @(
     @('allow', "& $Root\kit.exe agile note C:\some\backlog X ""y"" --as tibia 2>&1"),

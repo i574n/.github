@@ -140,13 +140,13 @@ function Copy-ToRemote([string] $localPath, [string] $remotePath) {
     if ($LASTEXITCODE) { throw "remote.ps1: scp to $remotePath failed (exit $LASTEXITCODE)" }
 }
 
-function Get-TreeDigest([string] $root, [string[]] $paths) {
+function Get-TreeFingerprint([string] $root, [string[]] $paths) {
     $lines = foreach ($path in ($paths | Sort-Object -Culture 'en-US')) { "$path $((Get-FileHash -LiteralPath (Join-Path $root $path) -Algorithm SHA256).Hash)" }
     [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($lines -join "`n")))).Substring(0, 16)
 }
 
-$remoteDigest = @'
-function Get-TreeDigest([string] $root, [string[]] $paths) {
+$remoteFingerprint = @'
+function Get-TreeFingerprint([string] $root, [string[]] $paths) {
     $lines = foreach ($path in ($paths | Sort-Object -Culture 'en-US')) { "$path $((Get-FileHash -LiteralPath (Join-Path $root $path) -Algorithm SHA256).Hash)" }
     [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($lines -join "`n")))).Substring(0, 16)
 }
@@ -174,7 +174,7 @@ else { $a = (Get-Content /proc/stat -TotalCount 1).Split(' ', [StringSplitOption
             "& $(ConvertTo-PwshLiteral $kitBinary) job list 12 2>&1 | Where-Object { `$_ -match 'state=(running|queued)' }"
             "foreach (`$repo in Get-ChildItem $(ConvertTo-PwshLiteral $target.gitRoot) -Directory) { if (Test-Path (Join-Path `$repo.FullName '.git')) { '{0,-14} {1}' -f `$repo.Name, (git -C `$repo.FullName rev-parse --short=8 HEAD) } }"
             "`$runner = [Environment]::GetEnvironmentVariable('SPIRAL_EXE', 'User') ?? `$env:SPIRAL_EXE; if (`$runner -and (Test-Path `$runner)) { 'node runner   {0} {1:yyyy-MM-dd HH:mm} {2}' -f (Get-FileHash `$runner).Hash.Substring(0, 16), (Get-Item `$runner).LastWriteTime, `$runner } else { 'node runner   (SPIRAL_EXE unset or missing)' }"
-            "`$core = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'spiral-bin' 'bin' 'single-flight' 'SpiralCompiler' 'Release' 'net11.0' 'SpiralCompilerCore.dll'; if (Test-Path `$core) { 'node compiler {0} {1:yyyy-MM-dd HH:mm}' -f (Get-FileHash `$core).Hash.Substring(0, 16), (Get-Item `$core).LastWriteTime } else { 'node compiler (missing)' }"
+            "`$core = Join-Path (`$env:SPIRAL_BIN_CACHE_DIR ?? (Join-Path (`$env:LOCALAPPDATA ?? `$env:XDG_CACHE_HOME ?? (Join-Path `$HOME '.cache')) 'spiral-bin')) 'bin' 'single-flight' 'SpiralCompiler' 'Release' 'net11.0' 'SpiralCompilerCore.dll'; if (Test-Path `$core) { 'node compiler {0} {1:yyyy-MM-dd HH:mm}' -f (Get-FileHash `$core).Hash.Substring(0, 16), (Get-Item `$core).LastWriteTime } else { 'node compiler (missing)' }"
             "`$spiral = Join-Path $(ConvertTo-PwshLiteral $target.gitRoot) 'spiral'; `$lib = @(Get-ChildItem (Join-Path `$spiral 'lib' 'spiral') -Recurse -File -Include *.spi,*.spir -ErrorAction SilentlyContinue | Sort-Object FullName); 'node checkout {0} lib {1} files {2}' -f (git -C `$spiral rev-parse --short=8 HEAD), `$lib.Count, [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes((`$lib | ForEach-Object { '{0}={1}' -f `$_.FullName.Substring(`$spiral.Length).Replace('/', '\'), `$_.Length }) -join '|'))).Substring(0, 16)"
         ) -join "`n")
         $boxRunner = @([Environment]::GetEnvironmentVariable('SPIRAL_EXE', 'User'), (Join-Path $gitRoot 'spiral\workspace\target\release\spiral.exe')) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
@@ -185,20 +185,20 @@ else { $a = (Get-Content /proc/stat -TotalCount 1).Split(' ', [StringSplitOption
         $boxLib = @(Get-ChildItem (Join-Path $boxSpiral 'lib\spiral') -Recurse -File -Include *.spi, *.spir -ErrorAction SilentlyContinue | Sort-Object FullName)
         'box  checkout {0} lib {1} files {2}' -f (git -C $boxSpiral rev-parse --short=8 HEAD), $boxLib.Count, [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes((($boxLib | ForEach-Object { '{0}={1}' -f $_.FullName.Substring($boxSpiral.Length), $_.Length }) -join '|')))).Substring(0, 16)
         'runner, compiler and checkout lines must match between node and box for comparable gate verdicts (memory node-stale-compiler-dll)'
-        $coreDigest = @'
-function Get-CoreDigest([string] $core) {
+        $coreFingerprint = @'
+function Get-CoreFingerprint([string] $core) {
     if (-not (Test-Path -LiteralPath $core)) { return 'missing' }
     $lines = Get-ChildItem -LiteralPath $core -Recurse -File | Sort-Object { $_.FullName.Substring($core.Length).Replace('/', '\') } -Culture 'en-US' | ForEach-Object { '{0} {1}' -f $_.FullName.Substring($core.Length).Replace('/', '\'), (Get-FileHash -LiteralPath $_.FullName).Hash }
     [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes(($lines -join "`n")))).Substring(0, 16)
 }
 '@
-        . ([scriptblock]::Create($coreDigest))
+        . ([scriptblock]::Create($coreFingerprint))
         $boxCoreDir = Join-Path $boxSpiral 'deps\The-Spiral-Language\VS Code Plugin\core'
         $nodeCoreDir = Join-RemotePath $target.gitRoot 'spiral' 'deps' 'The-Spiral-Language' 'VS Code Plugin' 'core'
-        $boxCoreDigest = Get-CoreDigest $boxCoreDir
-        $nodeCoreDigest = "$(Invoke-Remote ($coreDigest + "`nGet-CoreDigest $(ConvertTo-PwshLiteral $nodeCoreDir)"))".Trim()
-        if ($nodeCoreDigest -eq $boxCoreDigest) { 'deps core {0} matches the box (content digest)' -f $nodeCoreDigest }
-        else { 'DEPS-CORE-STALE deps\The-Spiral-Language core {0} vs box {1}: node compiles resolve |core- there, so they typecheck against another core (NODE-CORE-COPY-DRIFT)' -f $nodeCoreDigest, $boxCoreDigest; exit 6 }
+        $boxCoreFingerprint = Get-CoreFingerprint $boxCoreDir
+        $nodeCoreFingerprint = "$(Invoke-Remote ($coreFingerprint + "`nGet-CoreFingerprint $(ConvertTo-PwshLiteral $nodeCoreDir)"))".Trim()
+        if ($nodeCoreFingerprint -eq $boxCoreFingerprint) { 'deps core {0} matches the box (content fingerprint)' -f $nodeCoreFingerprint }
+        else { 'DEPS-CORE-STALE deps\The-Spiral-Language core {0} vs box {1}: node compiles resolve |core- there, so they typecheck against another core (NODE-CORE-COPY-DRIFT)' -f $nodeCoreFingerprint, $boxCoreFingerprint; exit 6 }
         exit $script:remoteExit
     }
     'verify' {
@@ -247,12 +247,12 @@ function Get-CoreDigest([string] $core) {
                 else { Get-ChildItem -LiteralPath $full -Recurse -File -Force | ForEach-Object { $_.FullName.Substring($rootFull.Length + 1).Replace('\', '/') } }
             })
             $changed = @($changed + $extra | Sort-Object -Unique)
-            "include: $($extra.Count) files from $($Include -join ', ') (gitignored inputs travel with the tree and count in the digest)"
+            "include: $($extra.Count) files from $($Include -join ', ') (gitignored inputs travel with the tree and count in the fingerprint)"
         }
         $deleted =@((git -C $localRepo diff --name-only --diff-filter=D --no-renames -z HEAD) -split "`0" | Where-Object { $_ } | Sort-Object -Unique)
-        $digest = if ($changed) { Get-TreeDigest $localRepo $changed } else { 'none' }
-        if ($Publish) { $Mirror = 'spiral-' + $head.Substring(0, 8) + '-' + $digest.Substring(0, [Math]::Min(8, $digest.Length)); $remoteRepo = ConvertTo-PwshLiteral (Join-RemotePath $mirrorRoot $Mirror $repo) }
-        "sync $repo -> ${Machine}: head $($head.Substring(0, 8)), $($changed.Count) changed, $($deleted.Count) deleted, digest $digest"
+        $fingerprint = if ($changed) { Get-TreeFingerprint $localRepo $changed } else { 'none' }
+        if ($Publish) { $Mirror = 'spiral-' + $head.Substring(0, 8) + '-' + $fingerprint.Substring(0, [Math]::Min(8, $fingerprint.Length)); $remoteRepo = ConvertTo-PwshLiteral (Join-RemotePath $mirrorRoot $Mirror $repo) }
+        "sync $repo -> ${Machine}: head $($head.Substring(0, 8)), $($changed.Count) changed, $($deleted.Count) deleted, fingerprint $fingerprint"
         if (-not $Force -and -not $Mirror) {
             Invoke-Remote "if (& $(ConvertTo-PwshLiteral $kitBinary) job list 50 2>&1 | Where-Object { `$_ -match 'state=(running|queued)' }) { exit 4 }"
             if ($script:remoteExit -eq 4) { 'remote.ps1: jobs are running or queued there; pass -Force, or use -Mirror <job> for an isolated worktree that is safe under running jobs'; exit 4 }
@@ -289,7 +289,7 @@ function Get-CoreDigest([string] $core) {
         }
         Remove-Item -Recurse -Force $work
         Invoke-Remote (@(
-            $remoteDigest
+            $remoteFingerprint
             "`$repo = $remoteRepo; `$stage = $stage"
             "git -C `$repo -c advice.detachedHead=false checkout -q --detach --force $head; if (`$LASTEXITCODE) { exit 5 }"
             "git -C `$repo clean -fd | ForEach-Object { 'remote-sync pruned untracked ' + (`$_ -replace '^Removing ', '') }"
@@ -300,9 +300,9 @@ function Get-CoreDigest([string] $core) {
             "foreach (`$dir in (`$deletedLines | ForEach-Object { Split-Path (Join-Path `$repo `$_) -Parent } | Sort-Object Length -Descending -Unique)) { `$d = `$dir; while (`$d -and `$d -ne `$repo -and (Test-Path `$d) -and @(Get-ChildItem -LiteralPath `$d -Force -ErrorAction SilentlyContinue).Count -eq 0) { Remove-Item -LiteralPath `$d -Force -ErrorAction SilentlyContinue; `$d = Split-Path `$d -Parent } }"
             "`$archive = Join-Path `$stage '$syncToken.tar'"
             "if (Test-Path `$archive) { tar -xmf `$archive -C `$repo; if (`$LASTEXITCODE) { exit 6 }; Remove-Item `$archive }"
-            "`$digest = if (`$changed) { Get-TreeDigest `$repo `$changed } else { 'none' }"
-            "'remote head {0}, digest {1}' -f (git -C `$repo rev-parse --short=8 HEAD), `$digest"
-            "if (`$digest -ne '$digest') { exit 7 }"
+            "`$fingerprint = if (`$changed) { Get-TreeFingerprint `$repo `$changed } else { 'none' }"
+            "'remote head {0}, fingerprint {1}' -f (git -C `$repo rev-parse --short=8 HEAD), `$fingerprint"
+            "if (`$fingerprint -ne '$fingerprint') { exit 7 }"
         ) -join "`n")
         $syncExit = $script:remoteExit
         if ($Mirror -and $syncExit -eq 0) {
@@ -330,14 +330,14 @@ function Get-CoreDigest([string] $core) {
         }
         $retried = [int]($env:REMOTE_SYNC_RETRIED ?? '0')
         if ($syncExit -ne 0 -and $retried -lt 2) {
-            $why = switch ($syncExit) { 7 { 'digest mismatch: the tree changed while it was packed' } 255 { 'ssh dropped' } 5 { 'remote checkout failed' } 6 { 'remote untar failed' } default { "remote step exited $syncExit" } }
+            $why = switch ($syncExit) { 7 { 'fingerprint mismatch: the tree changed while it was packed' } 255 { 'ssh dropped' } 5 { 'remote checkout failed' } 6 { 'remote untar failed' } default { "remote step exited $syncExit" } }
             "remote.ps1: no REMOTE-SYNC-OK ($why, exit $syncExit); retry $($retried + 1) of 2"
             $env:REMOTE_SYNC_RETRIED = "$($retried + 1)"
             & $PSCommandPath @PSBoundParameters
             exit $LASTEXITCODE
         }
         if ($syncExit -eq 0 -and $Publish) { Invoke-Remote "Set-Content -LiteralPath (Join-Path $(ConvertTo-PwshLiteral $mirrorRoot) 'spiral-current.txt') -Value $(ConvertTo-PwshLiteral $Mirror) -NoNewline; 'SPIRAL-PUBLISHED $Mirror'; `$root = $(ConvertTo-PwshLiteral $mirrorRoot); `$linked = @(Get-ChildItem `$root -Directory | ForEach-Object { Get-ChildItem `$_.FullName -Directory -ErrorAction SilentlyContinue } | ForEach-Object { `$d = Join-Path `$_.FullName 'deps' 'spiral'; if (Test-Path `$d) { ""`$((Get-Item `$d -Force).Target)"" } }); `$cmds = if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) { @(Get-CimInstance Win32_Process | ForEach-Object { ""`$(`$_.CommandLine)"" }) } else { @(ps -eo args) }; foreach (`$v in Get-ChildItem `$root -Directory | Where-Object { `$_.Name -match '^spiral-[0-9a-f]{8}-[0-9A-Fa-f]+$' -and `$_.Name -ne $(ConvertTo-PwshLiteral $Mirror) }) { if (-not (`$linked | Where-Object { `$_ -like ""*`$(`$v.Name)*"" }) -and -not (`$cmds | Where-Object { `$_ -like ""*`$(`$v.Name)*"" })) { 'SPIRAL-VERSION-STALE ' + `$v.FullName } }" }
-        if ($syncExit -eq 0) { "REMOTE-SYNC-OK $repo on $Machine matches this tree (head $($head.Substring(0, 8)), digest $digest)" }
+        if ($syncExit -eq 0) { "REMOTE-SYNC-OK $repo on $Machine matches this tree (head $($head.Substring(0, 8)), fingerprint $fingerprint)" }
         exit $syncExit
     }
 }

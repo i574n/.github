@@ -2,7 +2,7 @@ param(
     [string] $Root = (Join-Path $PSScriptRoot '..\..'),
     [string[]] $Words = @('harness'),
     [string[]] $SkipRepos = @('zed', 'wasmer', 'rustix', 'nearcore', 'leptos', 'The-Spiral-Language', 'forgottenserver', 'vault', 'Trading-Journal', 'azeroth', 'singularity'),
-    [string[]] $ExcludePaths = @(':!**/deps/**', ':!**/target/**', ':!**/_build/**', ':!**/node_modules/**', ':!docs/backlog/**', ':!scripts/banned-words-scan.ps1'),
+    [string[]] $ExcludePaths = @(':!**/deps/**', ':!**/target/**', ':!**/_build/**', ':!**/node_modules/**', ':!docs/backlog/**', ':!recovered/**', ':!scripts/banned-words-scan.ps1'),
     [string[]] $AllowLine = @('^\s*harness\s*=', '["`]harness\s*=\s*false["`]'),
     [switch] $FailOnHit
 )
@@ -22,14 +22,14 @@ $control = Join-Path ([IO.Path]::GetTempPath()) "banned-words-control-$PID"
 New-Item -ItemType Directory -Force $control | Out-Null
 try {
     git -C $control init -q 2>$null
-    Set-Content -LiteralPath (Join-Path $control 'probe.txt') -Value "a $($Words[0]) line"
+    Set-Content -LiteralPath (Join-Path $control 'control.txt') -Value "a $($Words[0]) line"
     Set-Content -LiteralPath (Join-Path $control 'Cargo.toml') -Value 'harness = false'
     $seen = @(Find-Hits $control).Count
 } finally {
     Remove-Item -LiteralPath $control -Recurse -Force
 }
 if ($seen -ne 1) { throw "positive control saw $seen hits, expected 1: the scan cannot be trusted (git grep -P missing, or the allow rules are wrong)" }
-"positive control: 1 hit as expected (the probe line found, the Cargo key allowed)"
+"positive control: 1 hit as expected (the control line found, the Cargo key allowed)"
 
 $repos = @(Get-ChildItem -LiteralPath $Root -Directory | Where-Object { -not $_.LinkType -and (Test-Path (Join-Path $_.FullName '.git')) -and $_.Name -notin $SkipRepos })
 $hits = @(foreach ($r in $repos) { Find-Hits $r.FullName })

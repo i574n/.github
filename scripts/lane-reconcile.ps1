@@ -27,24 +27,13 @@ $now = Get-Date
 $map = Get-LaneAliasMap
 $changes = @()
 
-# ── read live CC sessions (sessionId -> name), fresh within the window ────────────────
-# updatedAt is epoch MILLISECONDS (not ISO) - the trap that silently stales every row if read as ticks.
-$dir = Join-Path $env:USERPROFILE '.claude\sessions'
+# ── read live sessions (sessionId -> name), fresh within the window ───────────────────
+# Runtime read + epoch-millis parse is the provider's Get-AgentSessions (agent-runtime.ps1,
+# dot-sourced via node-env). sessionId is the rename-stable key; first name per id wins.
 $cur = @{}
-if (Test-Path $dir) {
-    foreach ($f in (Get-ChildItem -LiteralPath $dir -Filter '*.json' -ErrorAction SilentlyContinue)) {
-        try { $j = Get-Content -LiteralPath $f.FullName -Raw -ErrorAction Stop | ConvertFrom-Json } catch { continue }
-        if (-not $j.name -or -not $j.sessionId) { continue }
-        $upd = $null
-        foreach ($k in 'updatedAt', 'statusUpdatedAt', 'startedAt') {
-            $r = $j.$k; if ($null -eq $r -or "$r" -eq '') { continue }
-            try { if ("$r" -match '^\d+$') { $upd = [datetimeoffset]::FromUnixTimeMilliseconds([int64]"$r").LocalDateTime } else { $upd = [datetime]"$r" }; break } catch {}
-        }
-        if (-not $upd) { $upd = $f.LastWriteTime }
-        if (($now - $upd).TotalMinutes -gt $WithinMinutes) { continue }
-        $sid = "$($j.sessionId)"
-        if (-not $cur.ContainsKey($sid)) { $cur[$sid] = "$($j.name)" }
-    }
+foreach ($s in (Get-AgentSessions -WithinMinutes $WithinMinutes)) {
+    if (-not $s.Id) { continue }
+    if (-not $cur.ContainsKey($s.Id)) { $cur[$s.Id] = $s.Name }
 }
 
 # ── DETECT: same sessionId, changed name (vs snapshot) => rename; learn unknown new names ──

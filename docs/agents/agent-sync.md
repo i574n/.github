@@ -118,11 +118,11 @@ A new thread catches up fastest in this order, before opening the backlog's
   it), and a new `job wait` picks the job up. A running kit.exe is locked on Windows: when
   the job rebuilds kit, run `job wait` from the supervisor copy
   (`%LOCALAPPDATA%\kit\supervisor\kit-*.exe`), not `src/target/debug`.
-- **Probe what a queued job sees with `job start`:** `job run` supervises
+- **Trial what a queued job sees with `job start`:** `job run` supervises
   inside your own shell and environment, while `job start` goes through the
   shared job host, whose environment (until KIT-JOB-ENV lands) is whoever
   started it. On 10-23 a leaked `EOIE_WINDOWS_HOME` in the host made every
-  detached window gate read an empty registry, while every `job run` probe
+  detached window gate read an empty registry, while every `job run` trial
   looked fine.
 - **Read and search:** `kit read <path>[:from-to]... [--max-lines n]`,
   `kit lines <path|glob>...` (path, bytes, lines table) and
@@ -306,7 +306,7 @@ licenses, bundled or example skills, caches, templates, archives and trash.
 
 Canonical location: `i574n.github/docs/agents/agent-sync.md`. The `mold` scoop
 bucket is a clone of `i574n/mold` at `~/scoop/buckets/mold`; `fc1943s.github`
-is a workspace hub. A remote kit worker node (`DESKTOP-6E8C14G`, a LAN machine;
+is a workspace hub. A remote kit worker node (`moon`, a LAN machine;
 "worker node" / "remote node" for short) runs as a remote kit worker (its binary is C:\home\bin\kit.exe, per
 remote-machines.json; its old eoie\jobs store is an alias of kit\jobs), driven
 with `i574n.github/scripts/remote.ps1 <node> run|job|status|sync|fetch` over SSH

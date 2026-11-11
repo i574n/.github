@@ -1,0 +1,19 @@
+///- --package . --timeout 600000
+:# feature static =
+    :< testing
+
+:< sm'_operators
+:< model
+
+:~ ^ sides_from (words : array_base string) (i : i32) (n : i32) (acc : i32) : i32 =
+    ? i >= n ?> acc
+    |: sides_from words (i + 1i32) n (acc + sides_of (shape_of_word (sm'::trim (am'.index_base i words))))
+
+:= total_sides (text : string) : i32 =
+    := words = sm'::split "\n" text
+    sides_from words 0i32 (am'.length_base words) 0i32
+
+///> rust
+///> gleam
+:# sides_add_up_over_lines_static =
+    (total_sides "square\ntriangle\ncircle", total_sides "", total_sides "hex") |> _assert_eq (7i32, 0i32, 0i32)

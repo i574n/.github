@@ -8,6 +8,7 @@ workflow_check
 nix_flake
 editorconfig
 rust_toolchain
+crates
 pins_check
 workflows
 '''

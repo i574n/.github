@@ -1,0 +1,54 @@
+///- --package . --timeout 600000
+:# model static =
+    :< testing
+
+:< sm'_operators
+
+:| shape =
+    | Square
+    | Triangle
+    | Circle
+    | Unknown : string
+
+:! polygon = ()
+:! curve = ()
+
+:| ^ figure kind =
+    | Polygon :: i32 -> figure polygon
+    | Curve :: string -> figure curve
+
+:= figure_text \* k. (f : figure k) : string =
+    ?= f ?|
+    | Polygon n => "polygon " ++# sm'::show n
+    | Curve name => "curve " ++# name
+
+:= sides_of (s : shape) : i32 =
+    ?= s ?|
+    | Square => 4i32
+    | Triangle => 3i32
+    | Circle => 0i32
+    | Unknown _ => 0i32
+
+:= shape_of_word (w : string) : shape =
+    ? w = "square" ?> Square
+    |? w = "triangle" ?> Triangle
+    |? w = "circle" ?> Circle
+    |: Unknown w
+
+:= shape_text (s : shape) : string =
+    ?= s ?|
+    | Square => figure_text (Polygon 4i32)
+    | Triangle => figure_text (Polygon 3i32)
+    | Circle => figure_text (Curve "circle")
+    | Unknown w => "unknown " ++# w
+
+///> rust
+///> gleam
+:# a_word_names_its_shape_static =
+    (sides_of (shape_of_word "square"), sides_of (shape_of_word "circle"), shape_text (shape_of_word "hex"))
+    |> _assert_eq (4i32, 0i32, "unknown hex")
+
+///> rust
+///> gleam
+:# a_figure_keeps_its_kind_static =
+    (figure_text (Polygon 3i32), figure_text (Curve "arc")) |> _assert_eq ("polygon 3", "curve arc")

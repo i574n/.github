@@ -26,10 +26,10 @@ $home2 = $env:USERPROFILE
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $stage = Join-Path $env:TEMP "critical-mirror-$stamp"
 New-Item -ItemType Directory -Force $stage | Out-Null
-Copy-Item (Join-Path $home2 '.claude\projects\C--home-git\memory') (Join-Path $stage 'memory') -Recurse -Force
-Copy-Item (Join-Path $home2 '.claude\hooks') (Join-Path $stage 'hooks') -Recurse -Force -ErrorAction SilentlyContinue
+Copy-Item (Get-AgentMemoryDir) (Join-Path $stage 'memory') -Recurse -Force
+Copy-Item (Get-AgentHooksDir) (Join-Path $stage 'hooks') -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force (Join-Path $stage 'config') | Out-Null
-foreach ($f in (Join-Path $home2 '.claude\settings.json'), (Join-Path $home2 '.gitconfig'), (Join-Path $home2 '.ssh\config'), (Join-Path $home2 '.config\remote-machines.json'), (Join-Path $home2 '.wslconfig')) {
+foreach ($f in (Get-AgentSettingsFile), (Join-Path $home2 '.gitconfig'), (Join-Path $home2 '.ssh\config'), (Join-Path $home2 '.config\remote-machines.json'), (Join-Path $home2 '.wslconfig')) {
     if (Test-Path $f) { Copy-Item $f (Join-Path $stage 'config') -Force }
 }
 # WIP off-box via the FAST lane: the hot profile-mirror stalls on live transcripts, so route the uncommitted-WIP safety net here too. Include the newest kit-unstaged snapshot only when it differs from the last LANDED one (stamp advanced on scp success), so most 15-min runs stay lean.

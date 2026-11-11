@@ -1,0 +1,7 @@
+packageDir = '../../../../spiral/lib'
+packages = ['|core-', 'spiral-', '../tu_model-']
+link = ['../tu_model-']
+modules = '''
+feature
+tu_feature
+'''

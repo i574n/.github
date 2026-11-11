@@ -4,9 +4,12 @@
 :< emit
 :< agile
 :< compiler
+:< sota_score
 
 := main () : i32 =
     host_helpers ()
+    := results = env_or "GRAPHS_RESULTS" ""
+    ? results <> "" ?> say (score_line (read_text results)) |: ()
     := repo = env_or "GRAPHS_REPO" "."
     := out = env_or "GRAPHS_OUT" (repo ++# "/apps/graphs/out")
     make_dirs out

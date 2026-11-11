@@ -1,0 +1,10 @@
+///- --no-respell
+union task_ask =
+    | Asked :: string * string * string -> task_ask
+inl asked_of_naming_lexicon_ratchet () = Asked ("NAMING-LEXICON-RATCHET", "2026-11-08", "these bans should be in memory only, weird to hardcode them in the repos")
+inl asked_of_tibia_headless_client () = Asked ("TIBIA-HEADLESS-CLIENT", "2026-10-13", "harness OTClient to the end")
+inl asked_of_hangulize_in_spiral () = Asked ("HANGULIZE-IN-SPIRAL", "2026-11-08", "rewrite ALL of hangulize in Spiral inside the alphabet repo, FROM SCRATCH, not a port")
+inl asked_of_dialect_rename_edition3 () = Asked ("DIALECT-RENAME-EDITION3", "2026-11-01", "remove the reference to edition three everywhere, keep only i574n dialect and according variations")
+inl asked_of_large_input_scaling () = Asked ("LARGE-INPUT-SCALING", "2026-11-07", "the compiler should handle files of indefinite size")
+inl asked_of_cells_bench_codespace () = Asked ("CELLS-BENCH-CODESPACE", "2026-11-07", "benchmarks on codespaces, reliable numbers, no waiting for CI")
+inl asked_of_cells_bench_memo_layers () = Asked ("CELLS-BENCH-MEMO-LAYERS", "2026-11-07", "is cell memoization smart, including the compiler")

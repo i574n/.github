@@ -25,9 +25,21 @@
     := triggers = [Push ["main"]; PullRequest ["main"]; Dispatch]
     { name = "gh-pages"; triggers = triggers; access = [plain "contents" "read"]; jobs = [build; push] }
 
+:~ binaryen_lines () : list string =
+    := dir = "binaryen-" ++# download_version Binaryen
+    := url = "https://github.com/WebAssembly/binaryen/releases/download/" ++# download_version Binaryen ++# "/" ++# dir
+    [
+        "curl -fsSL " ++# url ++# "-x86_64-linux.tar.gz | tar -xz -C \"$RUNNER_TEMP\""
+        "echo \"$RUNNER_TEMP/" ++# dir ++# "/bin\" >> \"$GITHUB_PATH\""
+    ]
+
+:~ binaryen_install () : step =
+    := r = plain_run (binaryen_lines ())
+    Run { r ?| condition = Some "runner.os == 'Linux'"; guard_first = true }
+
 :~ dice () : workflow =
     := triggers = [Push ["main"]; PullRequest ["main"]]
-    := jobs = [notebook_build [] [] (pages_upload ()); verified_pages_push_job None "i574n" 180i32]
+    := jobs = [notebook_build [binaryen_install ()] [] (pages_upload ()); verified_pages_push_job None "i574n" 180i32]
     { name = "gh-pages"; triggers = triggers; access = []; jobs = jobs }
 
 :~ tectonic_diagnostics () : list string =
@@ -88,6 +100,7 @@
             uses "mlugg/setup-zig" [pinned pins.Zig]
             uses "actions/setup-python" [pinned Python]
             run "pwsh scripts/workflow.ps1 -Compiler -Suite ${{ github.event.inputs.suite || 'all' }}"
+            guarded_run "always()" "pwsh scripts/workflow.ps1 -K3s"
             guarded_run "always()" ("git diff --no-color -- apps/compiler/tmp/samples " ++# diff_target)
             guarded_run "always()" "sudo apt-get update -q && sudo apt-get install -y -q linux-tools-common \"linux-tools-$(uname -r)\" && pwsh apps/compiler/scripts/ebpf-kernel-load.ps1 > \"$SPIRAL_BIN_CACHE_DIR/ebpf-kernel-load.txt\" 2>&1 || true"
             uses_if "actions/upload-artifact" "always()" oracle
@@ -281,7 +294,7 @@
         ]
     := os = Matrix { keep_going = keep_going; os = desktop_os () }
     := build = job_of "build" 120i32 os (listm.concat [setup; tools; rest])
-    := triggers = [Push ["main"]; PullRequest ["main"]]
+    := triggers = [Push ["main"]; PullRequest ["main"]; Dispatch]
     { name = "gh-pages"; triggers = triggers; access = []; jobs = [build; pages_push_job None] }
 
 :~ html () : workflow = dotnet_pages [beam ()] false "30"
@@ -314,6 +327,9 @@
             { repo = "spiral"; path = "spiral/rust-toolchain.toml"; rendered = rust_toolchain [] }
             { repo = "tibia"; path = "tibia/rust-toolchain.toml"; rendered = tibia_rust_toolchain () }
             { repo = "x"; path = "x/rust-toolchain.toml"; rendered = rust_toolchain [] }
+            { repo = "html"; path = "html/rust-toolchain.toml"; rendered = rust_toolchain [] }
+            { repo = "regex"; path = "regex/rust-toolchain.toml"; rendered = rust_toolchain [] }
+            { repo = "i574n.github"; path = "i574n.github/rust-toolchain.toml"; rendered = rust_toolchain [] }
             workflow_target "kit" "gh-pages.yml" (kit ())
             { repo = "kit"; path = "kit/.editorconfig"; rendered = editorconfig () }
             workflow_target "html" "gh-pages.yml" (html ())

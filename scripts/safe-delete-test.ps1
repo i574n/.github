@@ -25,7 +25,7 @@ $stripped = pwsh -NoProfile -Command ". $(Join-Path $PSScriptRoot 'safe-delete.p
 $results.Add("$(if ($stripped -like 'refused*') { 'PASS' } else { 'FAIL' }) temp root with TEMP and TMP stripped (GetTempPath = profile): $stripped")
 $allStripped = pwsh -NoProfile -Command ". $(Join-Path $PSScriptRoot 'safe-delete.ps1'); Remove-Item Env:TEMP, Env:TMP, Env:USERPROFILE, Env:LOCALAPPDATA, Env:APPDATA; `$r = foreach (`$p in 'C:\Users\Public', 'C:\Users\Public\AppData\Local', 'C:\Users') { try { Assert-SafeDeleteRoot `$p | Out-Null; 'ALLOWED ' + `$p } catch { 'refused' } }; `$r -join ','"
 $results.Add("$(if ($allStripped -notmatch 'ALLOWED') { 'PASS' } else { 'FAIL' }) profile, LocalAppData and Users refused with USERPROFILE/LOCALAPPDATA/APPDATA/TEMP/TMP all stripped: $allStripped")
-$scratch = Join-Path $PSScriptRoot "safe-delete-probe-$PID"
+$scratch = Join-Path $PSScriptRoot "safe-delete-trial-$PID"
 New-Item -ItemType Directory -Force (Join-Path $scratch 'inner') | Out-Null
 Set-Content (Join-Path $scratch 'inner\f.txt') 'x'
 Remove-TreeSafely (Join-Path $scratch 'inner') -Under $scratch

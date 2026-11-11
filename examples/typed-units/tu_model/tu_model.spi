@@ -1,0 +1,10 @@
+:< model
+
+:= shape_same (s : shape) : shape = s
+
+:= main () : i32 =
+    export "tu_model_shape_same" shape_same
+    export "tu_model_sides_of" sides_of
+    export "tu_model_shape_of_word" shape_of_word
+    export "tu_model_shape_text" shape_text
+    0i32

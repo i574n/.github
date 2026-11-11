@@ -59,7 +59,7 @@ $rows | Group-Object Machine, Team | ForEach-Object {
 "=== the 10 longest jobs"
 $rows | Sort-Object Hours -Descending | Select-Object -First 10 Machine, Label, State, Exit, @{ n = 'WallH'; e = { [math]::Round($_.Hours, 2) } }, PeakMb | Format-Table -AutoSize | Out-String -Width 160
 
-"=== box processes by name, outside any live kit job's tree and any Claude session, at least 200 MB working set (candidates for dangling)"
+"=== box processes by name, outside any live kit job's tree and any agent session, at least 200 MB working set (candidates for dangling)"
 $all = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, WorkingSetSize, CommandLine, UserModeTime, KernelModeTime)
 $byId = @{}; foreach ($p in $all) { $byId[[int]$p.ProcessId] = $p }
 $jobRoots = @(Get-ChildItem "$env:LOCALAPPDATA\kit\jobs" -Directory | Where-Object { -not (Test-Path (Join-Path $_.FullName 'exit')) } | ForEach-Object {
@@ -68,7 +68,7 @@ $jobRoots = @(Get-ChildItem "$env:LOCALAPPDATA\kit\jobs" -Directory | Where-Obje
 $inJob = @{}
 foreach ($p in $all) {
     $seen = @{}; $cur = [int]$p.ProcessId
-    while ($cur -and -not $seen[$cur]) { $seen[$cur] = 1; if ($cur -in $jobRoots -or $byId[$cur].Name -eq 'claude.exe') { $inJob[[int]$p.ProcessId] = 1; break }; $cur = if ($byId[$cur]) { [int]$byId[$cur].ParentProcessId } else { 0 } }
+    while ($cur -and -not $seen[$cur]) { $seen[$cur] = 1; if ($cur -in $jobRoots -or $byId[$cur].Name -eq (Get-AgentProcessImage)) { $inJob[[int]$p.ProcessId] = 1; break }; $cur = if ($byId[$cur]) { [int]$byId[$cur].ParentProcessId } else { 0 } }
 }
 $daemonPorts = @{}
 foreach ($c in @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -ge 13905 -and $_.LocalPort -lt 15000 })) { $daemonPorts[[int]$c.OwningProcess] = [int]$c.LocalPort }
@@ -94,12 +94,10 @@ $all | Where-Object { -not $inJob[[int]$_.ProcessId] -and $_.WorkingSetSize -ge 
     [pscustomobject]@{ Name = $_.Group[0].Name; Owner = $_.Group[0].Owner; Count = $_.Count; WorkingSetMb = [math]::Round(($_.Group | Measure-Object WorkingSetSize -Sum).Sum / 1MB) }
 } | Sort-Object WorkingSetMb -Descending | Format-Table -AutoSize | Out-String -Width 160
 
-"=== Claude session tool shells by lane (live processes under each session's claude.exe; --resume names the lane, i574n is main)"
+"=== agent session tool shells by lane (live processes under each session's agent process; the session registry names the lane)"
 $sessionOf = @{}
-foreach ($c in $all | Where-Object { $_.Name -eq 'claude.exe' -and "$($_.CommandLine)" -match 'claude-code' }) {
-    $sessionOf[[int]$c.ProcessId] = if ("$($c.CommandLine)" -match '--resume\s+(\S+)') { $Matches[1] } else { '(no --resume)' }
-}
-$all | Where-Object { $_.Name -ne 'claude.exe' } | ForEach-Object {
+foreach ($s in (Get-AgentSessions)) { if ($s.Pid) { $sessionOf[[int]$s.Pid] = $s.Name } }
+$all | Where-Object { $_.Name -ne (Get-AgentProcessImage) } | ForEach-Object {
     $seen = @{}; $cur = [int]$_.ParentProcessId; $lane = $null
     while ($cur -and -not $seen[$cur]) { $seen[$cur] = 1; if ($sessionOf.ContainsKey($cur)) { $lane = $sessionOf[$cur]; break }; $cur = if ($byId[$cur]) { [int]$byId[$cur].ParentProcessId } else { 0 } }
     if ($lane) { [pscustomobject]@{ Lane = $lane; Ws = $_.WorkingSetSize; Cpu = ([double]$_.UserModeTime + [double]$_.KernelModeTime) / 1e7 } }
@@ -118,7 +116,7 @@ $deltas | Group-Object Name | ForEach-Object { [pscustomobject]@{ Name = $_.Name
 
 "=== per-lane idle gaps, last 6h (gaps >= 10min; ALARM if idle > 25% AND team has ready items; LANE-IDLE-GAPS) ==="
 $idleWinH = 6; $idleCut = (Get-Date).AddHours(-$idleWinH); $idleGapMin = 10
-$teamMap = @{}; $teamsFile = Join-Path $env:USERPROFILE '.claude\autonomous\teams.txt'
+$teamMap = @{}; $teamsFile = Get-AgentTeamsFile
 if (Test-Path $teamsFile) { foreach ($ln in Get-Content $teamsFile) { if ($ln -match '^([0-9a-f]+)=(\S+)') { $teamMap[$Matches[1]] = $Matches[2] } } }
 $idleBl = Join-Path $PSScriptRoot '..\docs\backlog'; $idleKit = Join-Path $env:LOCALAPPDATA 'kit\bin\kit.exe'; $readyCache = @{}
 function Test-TeamReady([string] $team) {
@@ -129,7 +127,7 @@ function Test-TeamReady([string] $team) {
     }
     $readyCache[$team]
 }
-$projDir = Join-Path $env:USERPROFILE '.claude\projects\C--home-git'
+$projDir = Get-AgentProjectDir
 $rxTs = [regex]'"timestamp":"([0-9T:\-\.Z]{19,})"'
 @(foreach ($jf in Get-ChildItem $projDir -Filter *.jsonl -EA SilentlyContinue | Where-Object { $_.LastWriteTime -gt $idleCut }) {
     $st = [Collections.Generic.List[datetime]]::new()

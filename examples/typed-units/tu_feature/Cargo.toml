@@ -1,0 +1,17 @@
+[package]
+name = "tu_feature"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[package.metadata.spiral]
+entry = "tu_feature.spi"
+output = "tu_feature.rs"
+kind = "feature"
+
+[lib]
+name = "tu_feature"
+path = "tu_feature.rs"
+
+[dependencies]
+tu_model = { path = "../tu_model" }

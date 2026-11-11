@@ -1,10 +1,12 @@
 #requires -Version 5.1
 param(
-    [string] $Dir = (Join-Path $env:USERPROFILE '.claude\projects\C--home-git\memory'),
+    [string] $Dir,
     [string] $Backlog = (Join-Path $PSScriptRoot '..\docs\backlog'),
     [switch] $NoteOnDrift
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'agent-runtime.ps1')
+if (-not $Dir) { $Dir = Get-AgentMemoryDir }
 $index = Join-Path $Dir 'MEMORY.md'
 $issues = [Collections.Generic.List[string]]::new()
 $files = Get-ChildItem $Dir -Filter '*.md' -File | Where-Object { $_.Name -ne 'MEMORY.md' }

@@ -26,8 +26,13 @@ $Push = @($Push -split ',' | Where-Object { $_ })
 $remote = Join-Path $PSScriptRoot 'remote.ps1'
 $nodeEnv = Join-Path $PSScriptRoot 'node-env.ps1'
 if (Test-Path $nodeEnv) { . $nodeEnv }
-$nodeRemoteWin = $NodeRemoteDir -replace '/', '\'
-$nodeStageWin = $NodeStageDir -replace '/', '\'
+$machines = Get-Content ~/.config/remote-machines.json -Raw | ConvertFrom-Json -AsHashtable
+$machine = ($JobMachine -eq 'node') ? $machines[$NodeRoutes[0]] : $machines[$JobMachine]
+if (!$machine) { throw "node-proof / no machine '$JobMachine' in ~/.config/remote-machines.json" }
+$onLinux = $machine.kind -eq 'linux'
+$sep = $onLinux ? '/' : '\'
+$remoteBase = ($JobMachine -eq 'node') ? ($NodeRemoteDir -replace '/', '\') : $machine.mirrorBase.TrimEnd('/', '\')
+$stageBase = ($JobMachine -eq 'node') ? ($NodeStageDir -replace '/', '\') : $machine.stage.TrimEnd('/', '\')
 $gitRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 function Get-ManifestPath([string] $Name) { Join-Path $env:LOCALAPPDATA "node-proof\$Name.json" }
 function Get-RepoHashes([string] $RepoRoot) {
@@ -60,7 +65,7 @@ if ($Land) {
     $fetchRoot = Join-Path ([IO.Path]::GetTempPath()) "node-proof-land\$Land"
     if (Test-Path $fetchRoot) { Remove-Item -Recurse -Force $fetchRoot }
     New-Item -ItemType Directory -Force $fetchRoot | Out-Null
-    pwsh -NoProfile -File $remote node fetch $From $fetchRoot
+    pwsh -NoProfile -File $remote $JobMachine fetch $From $fetchRoot
     if ($LASTEXITCODE) { throw "node-proof / fetch of $From failed" }
     $fetched = Join-Path $fetchRoot (Split-Path $From -Leaf)
     $repoRoot = Join-Path $gitRoot $Repo
@@ -85,59 +90,69 @@ if ($Land) {
 }
 if ($Summary) {
     $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Pattern))
-    $read = "`$j = Join-Path `$env:LOCALAPPDATA 'kit\jobs\$Summary'; if (!(Test-Path `$j)) { 'node-proof / no job $Summary'; exit 1 }; " +
+    $read = "`$kb = if (`$env:LOCALAPPDATA) { `$env:LOCALAPPDATA } elseif (`$env:XDG_CACHE_HOME) { `$env:XDG_CACHE_HOME } else { Join-Path `$HOME '.cache' }; " +
+        "`$j = Join-Path (Join-Path (Join-Path `$kb 'kit') 'jobs') '$Summary'; if (!(Test-Path `$j)) { 'node-proof / no job $Summary'; exit 1 }; " +
         "`$pattern = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$encoded')); " +
         "`$exit = (Get-Content (Join-Path `$j 'exit') -ErrorAction Ignore) -split '\t'; " +
         "`$seconds = if (`$exit.Count -ge 2) { ""`$([int](([long]`$exit[1] - [long](Get-Content (Join-Path `$j 'started_ms'))) / 1000)) s"" } else { 'still running' }; " +
         """node-proof / $Summary / exit `$(if (`$exit) { `$exit[0] } else { 'none yet' }) / `$seconds""; " +
         "Get-Content (Join-Path `$j 'stdout.log') | Select-String -Pattern `$pattern | ForEach-Object { `$_.Line.Substring(0, [Math]::Min(220, `$_.Line.Length)) }; " +
         "'node-proof / first error lines:'; Get-Content (Join-Path `$j 'stderr.log') | Select-String -Pattern 'error|Error|Exception|FatalError|ETY-|throw' | Select-Object -First $ErrorLines | ForEach-Object { (`$_.Line -replace '\x1b\[[0-9;]*m', '').Substring(0, [Math]::Min(220, (`$_.Line -replace '\x1b\[[0-9;]*m', '').Length)) }"
-    pwsh -NoProfile -File $remote node run $read 2>&1
+    pwsh -NoProfile -File $remote $JobMachine run $read 2>&1
     return
 }
 if (!$MirrorName) { throw 'node-proof / -MirrorName is required unless -Summary' }
+if ($Remove -and $onLinux) {
+    $check = "`$live = ((Get-Process | Where-Object CommandLine).CommandLine -join [char]10); `$p = '$remoteBase/$MirrorName'; " +
+        "if (!(Test-Path `$p)) { 'node-proof / no mirror $MirrorName' } elseif (`$live -match ([regex]::Escape(`$p) + '(/|""|\s|$)')) { 'node-proof / $MirrorName is in use, kept' } " +
+        "else { rm -rf -- `$p; ""node-proof / removed $MirrorName (rm -rf leaves symlink targets untouched), free GB `$([math]::Round((Get-PSDrive /).Free / 1GB, 1))"" }"
+    pwsh -NoProfile -File $remote $JobMachine run $check 2>&1 | Select-Object -Last 1
+    return
+}
 if ($Remove) {
-    $check = "`$live = ((Get-CimInstance Win32_Process | Where-Object CommandLine).CommandLine -join [char]10); `$p = '$nodeRemoteWin\$MirrorName';" +
+    $check = "`$live = ((Get-CimInstance Win32_Process | Where-Object CommandLine).CommandLine -join [char]10); `$p = '$remoteBase\$MirrorName';" +
         "if (!(Test-Path `$p)) { 'node-proof / no mirror $MirrorName' } elseif (`$live -match ([regex]::Escape(`$p) + '(\\|""|\s|$)')) { 'node-proof / $MirrorName is in use, kept' } " +
         "else { `$links = @(Get-ChildItem `$p -Recurse -Directory -Force -Attributes ReparsePoint -ErrorAction Ignore | Sort-Object { `$_.FullName.Length } -Descending); " +
         "foreach (`$l in `$links) { [IO.Directory]::Delete(`$l.FullName, `$false) }; Remove-Item -Recurse -Force `$p; " +
         """node-proof / removed $MirrorName (`$(`$links.Count) link(s) unlinked first, targets untouched), free GB `$([math]::Round((Get-PSDrive C).Free / 1GB, 1))"" }"
-    pwsh -NoProfile -File $remote node run $check 2>&1 | Select-Object -Last 1
+    pwsh -NoProfile -File $remote $JobMachine run $check 2>&1 | Select-Object -Last 1
     return
 }
 if (!$Label -or !$Command) { throw 'node-proof / -Label and -Command are required unless -Remove' }
-$machine = (Get-Content ~/.config/remote-machines.json -Raw | ConvertFrom-Json -AsHashtable)[$NodeRoutes[0]]
 $alias = $machine.sshAlias ? $machine.sshAlias : $machine.alias
 $address = try { ([Net.Dns]::GetHostAddresses($machine.hostName) | Where-Object AddressFamily -eq 'InterNetwork' | Select-Object -First 1).IPAddressToString } catch { $null }
-if (!$address) { $address = (Get-Content "~/.ssh/$alias-last-ip.txt" -Raw).Trim() }
-$mirrorRoot = "$nodeRemoteWin\$MirrorName"
-$stage = "$nodeStageWin\$MirrorName"
-$jobScript = Join-Path ([IO.Path]::GetTempPath()) "node-proof-$MirrorName.ps1"
+$lastIp = "~/.ssh/$alias-last-ip.txt"
+if (!$address -and (Test-Path $lastIp)) { $address = (Get-Content $lastIp -Raw).Trim() }
+$hostOption = $address ? @('-o', "HostName=$address") : @()
+$mirrorRoot = "$remoteBase$sep$MirrorName"
+$stage = "$stageBase$sep$MirrorName"
+$jobScript = Join-Path ([IO.Path]::GetTempPath()) "node-proof-$JobMachine-$MirrorName.ps1"
 $pin = $CompilerDll ? "`$env:SPIRAL_COMPILER_DLL = '$CompilerDll'`n" : ''
-$body = "`$ErrorActionPreference = 'Continue'`n$pin`$env:PATH = `"`$HOME\scoop\apps\erlang\current\bin;`$HOME\scoop\apps\elixir\current\bin;`$env:PATH`"`n$($Command.Replace('{mirror}', $mirrorRoot).Replace('{stage}', $stage))`nexit `$LASTEXITCODE`n"
+$toolPath = $onLinux ? '' : "`$env:PATH = `"`$HOME\scoop\apps\erlang\current\bin;`$HOME\scoop\apps\elixir\current\bin;`$env:PATH`"`n"
+$body = "`$ErrorActionPreference = 'Continue'`n$pin$toolPath$($Command.Replace('{mirror}', $mirrorRoot).Replace('{stage}', $stage))`nexit `$LASTEXITCODE`n"
 [IO.File]::WriteAllText($jobScript, $body)
 $tokens = $null; $errors = $null
 [System.Management.Automation.Language.Parser]::ParseFile($jobScript, [ref]$tokens, [ref]$errors) | Out-Null
 if ($errors.Count) { throw "node-proof / the job script does not parse: $($errors[0].Message)" }
-pwsh -NoProfile -File $remote node run "New-Item -ItemType Directory -Force '$stage' | Out-Null" | Out-Null
-scp -q -o "HostName=$address" $jobScript "${alias}:$($stage.Replace('\', '/'))/run.ps1"
+pwsh -NoProfile -File $remote $JobMachine run "New-Item -ItemType Directory -Force '$stage' | Out-Null" | Out-Null
+scp -q @hostOption $jobScript "${alias}:$($stage.Replace('\', '/'))/run.ps1"
 if ($LASTEXITCODE) { throw "node-proof / scp of the job script failed" }
 $want = (Get-FileHash $jobScript).Hash.Substring(0, 12)
-$have = pwsh -NoProfile -File $remote node run "(Get-FileHash '$stage\run.ps1').Hash.Substring(0, 12)" 2>&1 | Select-Object -Last 1
+$have = pwsh -NoProfile -File $remote $JobMachine run "(Get-FileHash '$stage${sep}run.ps1').Hash.Substring(0, 12)" 2>&1 | Select-Object -Last 1
 if ("$have" -ne $want) { throw "node-proof / staged job script hash $have, expected $want" }
 foreach ($file in $Push) {
     $leaf = Split-Path $file -Leaf
-    scp -q -o "HostName=$address" $file "${alias}:$($stage.Replace('\', '/'))/$leaf"
+    scp -q @hostOption $file "${alias}:$($stage.Replace('\', '/'))/$leaf"
     if ($LASTEXITCODE) { throw "node-proof / scp of $file failed" }
     $want = (Get-FileHash $file).Hash.Substring(0, 12)
-    $have = pwsh -NoProfile -File $remote node run "(Get-FileHash '$stage\$leaf').Hash.Substring(0, 12)" 2>&1 | Select-Object -Last 1
+    $have = pwsh -NoProfile -File $remote $JobMachine run "(Get-FileHash '$stage$sep$leaf').Hash.Substring(0, 12)" 2>&1 | Select-Object -Last 1
     if ("$have" -ne $want) { throw "node-proof / pushed $leaf hash $have, expected $want" }
     "node-proof / pushed $leaf to $stage ($want)"
 }
 $withSpiral = $Repos -contains 'spiral'
 foreach ($repo in @($Repos | Sort-Object { $_ -ne 'spiral' })) {
     $link = ($withSpiral -and $repo -ne 'spiral') ? @('-SpiralMirror', $MirrorName) : @()
-    $sync = @(pwsh -NoProfile -File $remote node sync $repo -Mirror $MirrorName @link 2>&1 | ForEach-Object { "$_" })
+    $sync = @(pwsh -NoProfile -File $remote $JobMachine sync $repo -Mirror $MirrorName @link 2>&1 | ForEach-Object { "$_" })
     if ($link -and -not ($sync -match '^MIRROR-SPIRAL-LINKED ')) { throw "node-proof / $repo in $MirrorName is not linked to its spiral mirror: $($sync | Select-Object -Last 1)" }
     $ok = @($sync -match "^REMOTE-SYNC-OK $repo ")
     if ($ok.Count -ne 1) { throw "node-proof / sync of $repo to $MirrorName did not print REMOTE-SYNC-OK: $($sync | Select-Object -Last 1)" }
@@ -145,7 +160,7 @@ foreach ($repo in @($Repos | Sort-Object { $_ -ne 'spiral' })) {
 }
 if ($LandRepos) { Write-SyncManifest $Label $LandRepos }
 $coreCheck = $RequireCore ? @('-RequireCore', $RequireCore) : @()
-$start = @(pwsh -NoProfile -File $remote $JobMachine job @coreCheck start $Label $TimeoutMs pwsh -NoProfile -File "$stage\run.ps1" 2>&1 | ForEach-Object { "$_" })
+$start = @(pwsh -NoProfile -File $remote $JobMachine job @coreCheck start $Label $TimeoutMs pwsh -NoProfile -File "$stage${sep}run.ps1" 2>&1 | ForEach-Object { "$_" })
 $started = @($start -match '^(kit|rig) job start ok ')
 if ($started.Count -eq 1) { $started[0] }
 else {

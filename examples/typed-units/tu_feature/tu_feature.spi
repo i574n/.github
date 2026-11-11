@@ -1,0 +1,5 @@
+:< feature
+
+:= main () : i32 =
+    export "tu_feature_total_sides" total_sides
+    0i32

@@ -6,11 +6,11 @@ param(
     [string[]] $Classes = @('dotnet', 'node', 'cargo', 'rustc', 'erl', 'beam', 'epmd'),
 
     [int] $ShortMinAgeMinutes = 3,
-    [string[]] $ShortClasses = @('gh', 'ssh', 'scp', 'git'),
+    [string[]] $ShortClasses = @('gh', 'ssh', 'scp', 'git', 'grep', 'rg'),
 
     [string[]] $ShellClasses = @('pwsh', 'powershell', 'conhost'),
     [int] $ShellMinAgeMinutes = 720,
-    [string[]] $PreserveCmdMatch = @('claude-boost-watcher', 'profile-mirror\.ps1', 'orphan-reaper', 'wsl-policy'),
+    [string[]] $PreserveCmdMatch = @('boost-watcher', 'profile-mirror\.ps1', 'orphan-reaper', 'wsl-policy'),
     [int] $MirrorStuckMinutes = 30,
     [switch] $DryRun
 )

@@ -1,0 +1,6 @@
+:< io
+
+:= main () : i32 =
+    export "tu_io_read_input" read_input
+    export "tu_io_write_input" write_input
+    0i32

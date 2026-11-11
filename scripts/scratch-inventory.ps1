@@ -1,11 +1,15 @@
 param(
-    [string] $TempRoot = (Join-Path $env:LOCALAPPDATA 'Temp\claude'),
-    [string] $Transcripts = (Join-Path $HOME '.claude\projects'),
-    [string] $Standing = (Join-Path $HOME '.claude\autonomous\standing.txt'),
+    [string] $TempRoot,
+    [string] $Transcripts,
+    [string] $Standing,
     [int] $AliveHours = 6,
     [string] $Out = ''
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'agent-runtime.ps1')
+if (-not $TempRoot) { $TempRoot = Get-AgentScratchRoot }
+if (-not $Transcripts) { $Transcripts = Get-AgentProjectsDir }
+if (-not $Standing) { $Standing = Get-AgentStandingFile }
 $copyFolders = '^(target|node_modules|\.cache|_build|deps|bin-node|sdk-src|\.git|obj|bin|zig-out|\.zig-cache)$|backup|^pre-land|-copy$|^copy-|mirror|snapshot'
 $deliverableExtensions = @('.spi', '.spir', '.spiproj', '.ps1', '.do', '.rs', '.fs', '.gleam', '.lua', '.zig', '.py', '.exs', '.ex', '.toml', '.json', '.md')
 $teams = @{}

@@ -4,16 +4,20 @@ param(
     [switch] $NoteOnStale
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'agent-runtime.ps1')
 $dir = Join-Path $env:LOCALAPPDATA 'kit\schedules'
 $self = 'heartbeat-staleness-guard.last.log'
 $override = @{
     'memory-integrity-sweep.last.log' = 1560
+    'scratch-inventory.last.log'      = 1560
     'config-baseline.last.log'        = 1560
     'profile-restore-drill.last.log'  = 1560
+    'node-drift-watch.last.log'       = 200   # DELEGATE-13 tick runs every 3h
+    'store-offsite-backup.last.log'   = 400   # STORE-OFFSITE-BACKUP tick runs every 6h
 }
 $now = Get-Date
 $runHeartbeatMax = 40
-$standing = Join-Path $env:USERPROFILE '.claude\autonomous\standing.txt'
+$standing = Get-AgentStandingFile
 $runActive = $false
 if (Test-Path $standing) {
     $m = [regex]::Match(((Get-Content -LiteralPath $standing -Raw -ErrorAction SilentlyContinue) + ''), 'until=(\S+)')

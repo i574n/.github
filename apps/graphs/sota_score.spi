@@ -41,28 +41,50 @@
 :~ ok_share_milli (rows : array (array string)) (ids : i64) (backend : string) : i64 =
     count_where rows (\ f => field f 1i32 = backend && field f 3i32 = "ok") * 1000i64 / ids
 
+:~ backends_of (rows : array (array string)) : array string = rows |> am'::map' (\ f => field f 1i32) |> am'::distinct
+
+:~ ok_share_sum (rows : array (array string)) (ids : i64) (backends : array string) : i64 =
+    backends |> arraym::fold (\ acc b => acc + ok_share_milli rows ids b) 0i64
+
 :~ results_coverage_milli (rows : array (array string)) : i64 =
     := ids = distinct_count rows 0i32
-    := backends = rows |> am'::map' (\ f => field f 1i32) |> am'::distinct
+    := backends = backends_of rows
     := count : i64 = conv (am'::length backends)
-    ? ids = 0i64 || count = 0i64 ?> 0i64
-    |: (backends |> arraym::fold (\ acc b => acc + ok_share_milli rows ids b) 0i64) / count
+    ? ids = 0i64 || count = 0i64 ?> 0i64 |: ok_share_sum rows ids backends / count
+
+:~ oracle_count (rows : array (array string)) (verdict : string) : i64 = count_where rows (\ f => field f 10i32 = verdict)
 
 :~ measure_of_results (text : string) : measure =
     := rows = rows_of text
     {
-        agree = count_where rows (\ f => field f 10i32 = "agree")
-        disagree = count_where rows (\ f => field f 10i32 = "disagree")
+        agree = oracle_count rows "agree"
+        disagree = oracle_count rows "disagree"
         coverage_milli = results_coverage_milli rows
         readability_milli = 0i64
     }
 
+:~ results_header () : string = "id\tbackend\tsuite\tcompile\tcompile_ms\tresidual\tnative\tnative_ms\texit\tstdout\toracle\n"
+
 :~ results_fixture () : string =
-    "id\tbackend\tsuite\tcompile\tcompile_ms\tresidual\tnative\tnative_ms\texit\tstdout\toracle\n"
+    results_header ()
     ++# "a\tC\tx\tok\t1\tr\tran\t1\t0\ts\tagree\n"
     ++# "b\tC\tx\tok\t1\tr\tran\t1\t0\ts\tagree\n"
     ++# "c\tC\tx\terror\t1\tr\tno\t0\t0\ts\t\n"
     ++# "a\tZig\tx\tok\t1\tr\tran\t1\t0\ts\t\n"
+
+:~ score_head (m : measure) : string = "sota score " ++# sm'::show (score (rule_1024 ()) m) ++# "/1000"
+
+:~ score_parts (m : measure) : string =
+    := counts = "agree " ++# sm'::show m.agree ++# ", disagree " ++# sm'::show m.disagree
+    counts ++# ", coverage " ++# sm'::show m.coverage_milli ++# "/1000"
+
+:~ score_line (text : string) : string =
+    := m = measure_of_results text
+    score_head m ++# " (" ++# score_parts m ++# ")"
+
+///> rust
+:# the_score_line_names_the_score_and_its_parts =
+    score_line (results_fixture ()) |> _assert_eq "sota score 550/1000 (agree 2, disagree 0, coverage 499/1000)"
 
 ///> rust
 :# a_results_file_scores_by_the_same_rule =

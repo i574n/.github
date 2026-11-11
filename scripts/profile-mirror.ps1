@@ -10,7 +10,7 @@ if (Test-Path $nodeEnv) { . $nodeEnv }
 if (-not $Routes) { $Routes = $NodeRoutes }
 if (-not $RemoteDir) { $RemoteDir = $NodeMirrorDir }
 $profileRoot = $env:USERPROFILE
-$claude = Join-Path $profileRoot '.claude'
+$claude = Get-AgentStateHome
 $sourceExtensions = '.ps1', '.psm1', '.psd1', '.exs', '.ex', '.spi', '.spir', '.md', '.tsv', '.csv', '.txt', '.h', '.c', '.json', '.toml', '.kit', '.do', '.sh', '.py', '.gleam', '.rs', '.fs', '.fsx'
 $heavyFolders = '\\(lib\\spiral|mix-build|_build|node_modules|target|deps|\.cache|build|extracted|[^\\]*bundle\\(base|cand))(\\|$)'
 
@@ -53,7 +53,7 @@ $globFiles = @(
     (Join-Path $profileRoot 'scoop\persist\*\data\user-data\User\settings.json'),
     (Join-Path $profileRoot 'scoop\persist\*\data\user-data\User\keybindings.json')
 )
-$scratchRoot = Join-Path $env:TEMP 'claude'
+$scratchRoot = Get-AgentScratchRoot
 
 # INCREMENTAL persistent snapshot (was: a full per-file copy of ~3GB/69k files every run, which ground at ~47% CPU for 15min under 100% box load and stalled the lane - MIRROR-TRANSFER-COST n45). robocopy /MIR refreshes ONLY the delta into a FIXED snapshot dir; /R:0 /W:0 skips a locked file instead of hanging. robocopy exit 0-7 = success, 8+ = hard failure. kit's incremental dir-mirror verb supersedes this later.
 $snapshot = Join-Path $env:TEMP 'profile-mirror-snapshot'

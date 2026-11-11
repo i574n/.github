@@ -1,0 +1,11 @@
+[workspace]
+resolver = "3"
+members = ["tu_model", "tu_io", "tu_feature", "tu"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+[workspace.metadata.spiral]
+template = "typed-units/1"

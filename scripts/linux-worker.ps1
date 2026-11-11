@@ -36,9 +36,9 @@ function Edit-Line([string] $text, [string] $old, [string] $new) {
     $text.Replace($old, $new)
 }
 
-$probe = ssh @sshOptions $SshAlias 'echo ${SSH_CLIENT%% *}; uname -m; ssh -V 2>&1 | head -n 1' 2>&1
-if ($LASTEXITCODE -or @($probe).Count -lt 3) { throw "linux-worker.ps1: cannot reach $SshAlias over ssh: $($probe -join ' | ')" }
-$controller, $arch, $openssh = @($probe)
+$ping = ssh @sshOptions $SshAlias 'echo ${SSH_CLIENT%% *}; uname -m; ssh -V 2>&1 | head -n 1' 2>&1
+if ($LASTEXITCODE -or @($ping).Count -lt 3) { throw "linux-worker.ps1: cannot reach $SshAlias over ssh: $($ping -join ' | ')" }
+$controller, $arch, $openssh = @($ping)
 if (-not $ExemptIp) { $ExemptIp = @($controller) }
 $penalties = $openssh -match 'OpenSSH_(\d+)\.(\d+)' -and ([int] $Matches[1] -gt 9 -or ([int] $Matches[1] -eq 9 -and [int] $Matches[2] -ge 8))
 "machine: $SshAlias $arch, $openssh, controller $controller"

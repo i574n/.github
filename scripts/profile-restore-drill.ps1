@@ -1,15 +1,17 @@
 param(
     [string[]] $Routes,
     [string] $RemoteDir,
-    [string] $MemoryDir = (Join-Path $env:USERPROFILE '.claude\projects\C--home-git\memory'),
-    [string] $MemberFilter = 'projects/C--home-git/memory/',
+    [string] $MemoryDir,
+    [string] $MemberFilter,
     [int] $MinEntries = 1000,
     [int] $MaxArchiveAgeHours = 3,
     [switch] $NoteOnFailure
 )
 $ErrorActionPreference = 'Stop'
 $nodeEnv = Join-Path $PSScriptRoot 'node-env.ps1'
-if (Test-Path $nodeEnv) { . $nodeEnv }
+if (Test-Path $nodeEnv) { . $nodeEnv } else { . (Join-Path $PSScriptRoot 'agent-runtime.ps1') }
+if (-not $MemoryDir) { $MemoryDir = Get-AgentMemoryDir }
+if (-not $MemberFilter) { $MemberFilter = "projects/$(Get-AgentProjectKey)/memory/" }
 if (-not $Routes) { $Routes = $NodeRoutes }
 if (-not $RemoteDir) { $RemoteDir = $NodeMirrorDir }
 $log = Join-Path $env:LOCALAPPDATA 'kit\schedules\profile-restore-drill.last.log'

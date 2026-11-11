@@ -27,6 +27,13 @@
     [RustMain; DotnetWorkflow; Otp; Elixir; Gleam; Rebar3; Zig; Python]
     |> listm.map \ t => { tool = t; version = version_of t }
 
+:| release_download =
+    | Binaryen
+
+:= download_version (d : release_download) : string =
+    ?= d ?|
+    | Binaryen => "version_133"
+
 :== action_pin = { name : string; ref : string }
 
 := action_pins () : list action_pin =

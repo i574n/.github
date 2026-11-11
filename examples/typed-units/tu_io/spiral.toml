@@ -1,0 +1,6 @@
+packageDir = '../../../../spiral/lib'
+packages = ['|core-', 'spiral-']
+modules = '''
+io
+tu_io
+'''
